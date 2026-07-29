@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Input;
 using ScreenshotCat.Interop;
 using ScreenshotCat.Services;
 using Windows.Graphics;
-using Windows.UI;
 using WinRT;
 using WinRT.Interop;
 
@@ -22,7 +21,7 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
     private readonly Action _onCancel;
     private readonly Action _onClear;
     private readonly Action _onFinish;
-    private readonly Action<bool> _onInteractionModeChanged;
+    private readonly Action<bool> _onPausedChanged;
     private readonly DispatcherTimer _followTimer = new();
     private readonly TargetWindowTracker _targetWindowTracker;
     private AppWindow? _appWindow;
@@ -35,6 +34,8 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
     private int _lastToolbarY = int.MinValue;
     private int _lastToolbarHeight;
     private bool _isShown;
+    private bool _isPaused;
+    private int _commentCount;
 
     public AnnotationSessionToolbarWindow(
         nint targetHwnd,
@@ -42,14 +43,14 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         Action onCancel,
         Action onClear,
         Action onFinish,
-        Action<bool> onInteractionModeChanged)
+        Action<bool> onPausedChanged)
     {
         _targetHwnd = targetHwnd;
         _annotationHwnd = annotationHwnd;
         _onCancel = onCancel;
         _onClear = onClear;
         _onFinish = onFinish;
-        _onInteractionModeChanged = onInteractionModeChanged;
+        _onPausedChanged = onPausedChanged;
 
         InitializeComponent();
         ConfigureWindow();
@@ -75,16 +76,48 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
 
     public void SetCommentCount(int count)
     {
-        StatusText.Text = count == 0 ? "正在批注" : $"正在批注 · {count} 条";
+        _commentCount = Math.Max(0, count);
         FinishText.Text = "保存";
-        FinishButton.IsEnabled = count > 0;
+        FinishButton.IsEnabled = _commentCount > 0 && !_isPaused;
+        UpdateStatusAndPauseUi();
     }
 
     public void SetSavingState(bool isSaving, string? message = null)
     {
-        StatusText.Text = message ?? (isSaving ? "正在保存批注…" : "正在批注");
-        FinishButton.IsEnabled = !isSaving;
-        FinishText.Text = isSaving ? "保存中" : "保存";
+        if (isSaving)
+        {
+            StatusText.Text = message ?? "正在保存批注…";
+            FinishButton.IsEnabled = false;
+            FinishText.Text = "保存中";
+            PauseButton.IsEnabled = false;
+            return;
+        }
+
+        PauseButton.IsEnabled = true;
+        FinishText.Text = "保存";
+        FinishButton.IsEnabled = _commentCount > 0 && !_isPaused;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            StatusText.Text = message;
+            return;
+        }
+
+        UpdateStatusAndPauseUi();
+    }
+
+    private void UpdateStatusAndPauseUi()
+    {
+        PauseButton.Content = _isPaused ? "继续批注" : "暂停";
+        PauseButton.IsEnabled = true;
+        if (_isPaused)
+        {
+            StatusText.Text = _commentCount > 0
+                ? $"已暂停 · 保留 {_commentCount} 条"
+                : "已暂停 · 可操作窗口";
+            return;
+        }
+
+        StatusText.Text = _commentCount == 0 ? "正在批注" : $"正在批注 · {_commentCount} 条";
     }
 
     private void ConfigureWindow()
@@ -146,7 +179,10 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var foreground = NativeMethods.GetForegroundWindow();
         var foregroundRoot = NativeMethods.GetAncestor(foreground, NativeMethods.GaRoot);
-        if (foreground != _targetHwnd
+        // While paused, keep the toolbar visible even if the user operates the target
+        // or briefly focuses a child window, so they can resume annotation.
+        if (!_isPaused
+            && foreground != _targetHwnd
             && foregroundRoot != _targetHwnd
             && foreground != _annotationHwnd
             && foregroundRoot != _annotationHwnd)
@@ -161,20 +197,26 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         {
             cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>()
         };
-        var workTop = NativeMethods.GetMonitorInfo(monitor, ref monitorInfo)
-            ? monitorInfo.rcWork.Top
-            : 0;
-        var toolbarHeight = NativeMethods.DipToPhysicalPixels(hwnd, ToolbarHeightDip);
-        var y = rect.Top - toolbarHeight;
-        if (y < workTop)
+        var hasMonitorInfo = NativeMethods.GetMonitorInfo(monitor, ref monitorInfo);
+        var monitorLeft = hasMonitorInfo ? monitorInfo.rcMonitor.Left : rect.Left;
+        var monitorTop = hasMonitorInfo ? monitorInfo.rcMonitor.Top : rect.Top;
+        var monitorRight = hasMonitorInfo ? monitorInfo.rcMonitor.Right : rect.Right;
+        var monitorBottom = hasMonitorInfo ? monitorInfo.rcMonitor.Bottom : rect.Bottom;
+        var toolbarX = Math.Max(rect.Left, monitorLeft);
+        var toolbarWidth = Math.Max(0, Math.Min(rect.Right, monitorRight) - toolbarX);
+        if (toolbarWidth < 240)
         {
-            y = rect.Top;
+            HideToolbar();
+            return true;
         }
 
+        var toolbarHeight = NativeMethods.DipToPhysicalPixels(hwnd, ToolbarHeightDip);
+        var y = Math.Clamp(rect.Top - toolbarHeight, monitorTop, Math.Max(monitorTop, monitorBottom - toolbarHeight));
+
         var currentBoundsMatch = NativeMethods.GetWindowRect(hwnd, out var currentRect)
-            && currentRect.Left == rect.Left
+            && currentRect.Left == toolbarX
             && currentRect.Top == y
-            && currentRect.Right - currentRect.Left == width
+            && currentRect.Right - currentRect.Left == toolbarWidth
             && currentRect.Bottom - currentRect.Top == toolbarHeight;
         var boundsChanged = !currentBoundsMatch
             || !_lastTargetRect.HasValue
@@ -186,17 +228,13 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
             || _lastToolbarHeight != toolbarHeight;
         if (boundsChanged)
         {
-            _appWindow?.MoveAndResize(new RectInt32(rect.Left, y, width, toolbarHeight));
+            _appWindow?.MoveAndResize(new RectInt32(toolbarX, y, toolbarWidth, toolbarHeight));
             var settledToolbarHeight = NativeMethods.DipToPhysicalPixels(hwnd, ToolbarHeightDip);
             if (settledToolbarHeight != toolbarHeight)
             {
                 toolbarHeight = settledToolbarHeight;
-                y = rect.Top - toolbarHeight;
-                if (y < workTop)
-                {
-                    y = rect.Top;
-                }
-                _appWindow?.MoveAndResize(new RectInt32(rect.Left, y, width, toolbarHeight));
+                y = Math.Clamp(rect.Top - toolbarHeight, monitorTop, Math.Max(monitorTop, monitorBottom - toolbarHeight));
+                _appWindow?.MoveAndResize(new RectInt32(toolbarX, y, toolbarWidth, toolbarHeight));
             }
             _lastTargetRect = rect;
             _lastToolbarY = y;
@@ -284,15 +322,36 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => _onCancel();
 
-    private void ClearButton_Click(object sender, RoutedEventArgs e) => _onClear();
-
-    private void FinishButton_Click(object sender, RoutedEventArgs e) => _onFinish();
-
-    private void InteractionToggle_Click(object sender, RoutedEventArgs e)
+    private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
-        var enabled = InteractionToggle.IsChecked == true;
-        InteractionToggle.Content = enabled ? "继续批注" : "操作窗口";
-        _onInteractionModeChanged(enabled);
+        if (_isPaused)
+        {
+            return;
+        }
+
+        _onClear();
+    }
+
+    private void FinishButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isPaused)
+        {
+            return;
+        }
+
+        _onFinish();
+    }
+
+    private void PauseButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isPaused = !_isPaused;
+        UpdateStatusAndPauseUi();
+        FinishButton.IsEnabled = _commentCount > 0 && !_isPaused;
+        _onPausedChanged(_isPaused);
+        if (!_isPaused)
+        {
+            FollowTarget();
+        }
     }
 
     private void LocateButton_Click(object sender, RoutedEventArgs e)

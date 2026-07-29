@@ -10,48 +10,80 @@
         KeyDown="Root_KeyDown"
         PointerPressed="Root_PointerPressed"
         PointerMoved="Root_PointerMoved"
-        PointerReleased="Root_PointerReleased">
+        PointerReleased="Root_PointerReleased"
+        PointerExited="Root_PointerExited">
         <Image x:Name="ScreenPreview" Stretch="Fill" />
 
+        <!-- Window hover/selection chrome only: no full-screen dim mask. -->
         <Canvas x:Name="DimCanvas" IsHitTestVisible="False">
-            <Rectangle x:Name="TopDim" Fill="#99000000" />
-            <Rectangle x:Name="LeftDim" Fill="#99000000" />
-            <Rectangle x:Name="RightDim" Fill="#99000000" />
-            <Rectangle x:Name="BottomDim" Fill="#99000000" />
+            <Rectangle
+                x:Name="HoverShadow"
+                Fill="#33000000"
+                RadiusX="10"
+                RadiusY="10"
+                Visibility="Collapsed" />
             <Rectangle
                 x:Name="SelectionBorder"
                 Stroke="#FF18A0FB"
                 StrokeThickness="3"
-                Fill="Transparent"
+                Fill="#2218A0FB"
+                RadiusX="6"
+                RadiusY="6"
                 Visibility="Collapsed" />
         </Canvas>
 
         <Canvas x:Name="AnnotationCanvas" IsHitTestVisible="False" />
 
         <Border
-            x:Name="ModeToolbar"
-            Padding="8,6"
-            HorizontalAlignment="Right"
+            x:Name="HoverHintPill"
+            Padding="12,6"
+            HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Margin="12"
-            Background="#DD111111"
-            CornerRadius="8"
-            BorderBrush="#88AAAAAA"
-            BorderThickness="1">
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            Background="#E0182030"
+            BorderBrush="#6618A0FB"
+            BorderThickness="1"
+            CornerRadius="14"
+            IsHitTestVisible="False"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="HoverHintText"
+                FontSize="12"
+                Foreground="#EAF4FF"
+                Text="右键长按选中窗口" />
+        </Border>
+
+        <Border
+            x:Name="ModeToolbar"
+            Height="50"
+            Padding="10,8"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"
+            Margin="0"
+            Background="#EE121820"
+            CornerRadius="0"
+            BorderBrush="#55A0C4E8"
+            BorderThickness="0,0,0,1"
+            Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="10">
                 <TextBlock
                     x:Name="WrapModeText"
                     VerticalAlignment="Center"
-                    Text="长按窗口后可操作"
+                    Text="全屏批注"
                     FontSize="12"
                     Foreground="White"
-                    Opacity="0.86" />
+                    Opacity="0.9" />
                 <Button
                     x:Name="AnnotationModeButton"
-                    MinWidth="86"
-                    Padding="10,4"
+                    MinWidth="96"
+                    Padding="12,4"
                     Click="AnnotationModeButton_Click"
-                    Content="开启批注" />
+                    Content="结束批注" />
+                <Button
+                    x:Name="SaveCaptureButton"
+                    MinWidth="86"
+                    Padding="12,4"
+                    Click="SaveCaptureButton_Click"
+                    Content="保存截图" />
             </StackPanel>
         </Border>
 

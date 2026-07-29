@@ -13,6 +13,7 @@ using ScreenshotCat.Interop;
 using ScreenshotCat.Models;
 using ScreenshotCat.Services;
 using Windows.Graphics;
+using Windows.Storage;
 using Windows.System;
 using Windows.UI;
 using WinRT.Interop;
@@ -43,6 +44,8 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
     private int _targetUnavailableTicks;
     private NativeMethods.RECT? _lastTargetRect;
     private bool _isShown;
+    private bool _isClosed;
+    private int _snapshotRefreshVersion;
     private nint _companionToolbarHwnd;
 
     public int CommentCount => _comments.Count;
@@ -50,11 +53,42 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
     public event EventHandler<int>? CommentCountChanged;
     public event EventHandler? ExitAnnotationModeRequested;
 
-    public void SetTargetInteractionEnabled(bool enabled)
+    private bool _isPaused;
+
+    public void SetPaused(bool paused)
     {
+        if (_isPaused == paused)
+        {
+            return;
+        }
+
         CancelDraft();
-        NativeMethods.SetMouseClickThrough(WindowNative.GetWindowHandle(this), enabled);
+        _isPaused = paused;
+        var hwnd = WindowNative.GetWindowHandle(this);
+        if (paused)
+        {
+            // Keep comments in memory, but let the real window receive input so the
+            // user can navigate to another UI state before resuming annotation.
+            _snapshotRefreshVersion++;
+            NativeMethods.SetMouseClickThrough(hwnd, true);
+            CommentPreviewPanel.Visibility = Visibility.Collapsed;
+            SelectionPreview.Visibility = Visibility.Collapsed;
+            HintPill.Visibility = Visibility.Collapsed;
+            NotePanel.IsOpen = false;
+            HideOverlay();
+            return;
+        }
+
+        NativeMethods.SetMouseClickThrough(hwnd, false);
+        AnnotationCanvas.Visibility = Visibility.Visible;
+        RebuildCommentUi();
+        HintPill.Visibility = _comments.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSessionUi();
+        _ = RefreshTargetSnapshotAsync(activateWhenReady: true);
     }
+
+    // Compatibility wrapper used by older call sites.
+    public void SetTargetInteractionEnabled(bool enabled) => SetPaused(enabled);
 
     public void SetCompanionToolbarWindow(nint hwnd) => _companionToolbarHwnd = hwnd;
 
@@ -63,7 +97,6 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
         _targetHwnd = targetHwnd;
 
         InitializeComponent();
-        LoadTargetSnapshot();
         ConfigureWindow();
         _targetWindowTracker = new TargetWindowTracker(targetHwnd, DispatcherQueue, FollowTarget);
         Activated += (_, _) => NativeMethods.DisableDwmBorder(WindowNative.GetWindowHandle(this));
@@ -76,13 +109,8 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
 
     public void StartFollowing()
     {
-        FollowTarget();
         _followTimer.Start();
-        Activate();
-        _isShown = true;
-        FollowTarget();
-        NativeMethods.DisableDwmBorder(WindowNative.GetWindowHandle(this));
-        Root.Focus(FocusState.Programmatic);
+        _ = RefreshTargetSnapshotAsync(activateWhenReady: true);
     }
 
     private void ConfigureWindow()
@@ -98,20 +126,62 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
         NativeMethods.DisableDwmBorder(hwnd);
     }
 
-    private void LoadTargetSnapshot()
+
+    private async Task RefreshTargetSnapshotAsync(bool activateWhenReady)
     {
-        _snapshotPath = TryCaptureTargetSnapshot();
-        if (_snapshotPath is not null)
+        var refreshVersion = ++_snapshotRefreshVersion;
+        var previousPath = _snapshotPath;
+        var capture = await Task.Run(TryCaptureTargetSnapshot);
+        if (capture is null)
         {
-            using (var snapshot = new System.Drawing.Bitmap(_snapshotPath))
-            {
-                _snapshotPixelSize = snapshot.Size;
-            }
-            TargetSnapshot.Source = new BitmapImage(new Uri(_snapshotPath));
+            return;
+        }
+
+        if (_isClosed || _isPaused || refreshVersion != _snapshotRefreshVersion)
+        {
+            DeleteSnapshot(capture.Path);
+            return;
+        }
+
+        BitmapImage image;
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(capture.Path);
+            using var stream = await file.OpenReadAsync();
+            image = new BitmapImage();
+            await image.SetSourceAsync(stream);
+        }
+        catch
+        {
+            DeleteSnapshot(capture.Path);
+            return;
+        }
+
+        if (_isClosed || _isPaused || refreshVersion != _snapshotRefreshVersion)
+        {
+            DeleteSnapshot(capture.Path);
+            return;
+        }
+
+        _snapshotPath = capture.Path;
+        _snapshotPixelSize = capture.PixelSize;
+        TargetSnapshot.Source = image;
+        if (!string.IsNullOrWhiteSpace(previousPath)
+            && !string.Equals(previousPath, capture.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            DeleteSnapshot(previousPath);
+        }
+
+        FollowTarget();
+        if (activateWhenReady && _isShown)
+        {
+            Activate();
+            NativeMethods.DisableDwmBorder(WindowNative.GetWindowHandle(this));
+            Root.Focus(FocusState.Programmatic);
         }
     }
 
-    private string? TryCaptureTargetSnapshot()
+    private CapturedSnapshot? TryCaptureTargetSnapshot()
     {
         if (!NativeMethods.GetWindowRect(_targetHwnd, out var rect))
         {
@@ -126,17 +196,11 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
 
         try
         {
-            var printWindowSnapshot = TryCaptureTargetWithPrintWindow(targetBounds);
-            if (printWindowSnapshot is not null)
-            {
-                return printWindowSnapshot;
-            }
-
             var center = new System.Drawing.Point(
                 targetBounds.Left + targetBounds.Width / 2,
                 targetBounds.Top + targetBounds.Height / 2);
-            using var capture = _captureService.CaptureMonitorAtPoint(center);
-            var visibleBounds = System.Drawing.Rectangle.Intersect(targetBounds, capture.MonitorBounds);
+            var monitorBounds = _captureService.GetMonitorBoundsAtPoint(center);
+            var visibleBounds = System.Drawing.Rectangle.Intersect(targetBounds, monitorBounds);
             if (visibleBounds.Width < 1 || visibleBounds.Height < 1)
             {
                 return null;
@@ -150,8 +214,8 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
             {
                 graphics.Clear(System.Drawing.Color.FromArgb(255, 16, 20, 24));
                 var source = new System.Drawing.Rectangle(
-                    visibleBounds.Left - capture.MonitorBounds.Left,
-                    visibleBounds.Top - capture.MonitorBounds.Top,
+                    visibleBounds.Left,
+                    visibleBounds.Top,
                     visibleBounds.Width,
                     visibleBounds.Height);
                 var destination = new System.Drawing.Rectangle(
@@ -159,22 +223,40 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
                     visibleBounds.Top - targetBounds.Top,
                     visibleBounds.Width,
                     visibleBounds.Height);
-                graphics.DrawImage(capture.Bitmap, destination, source, System.Drawing.GraphicsUnit.Pixel);
+                graphics.CopyFromScreen(
+                    source.Left,
+                    source.Top,
+                    destination.Left,
+                    destination.Top,
+                    source.Size,
+                    System.Drawing.CopyPixelOperation.SourceCopy);
+            }
+
+            if (IsLikelyBlankSnapshot(snapshot))
+            {
+                return TryCaptureTargetWithPrintWindow(targetBounds);
             }
 
             var path = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(),
                 $"ScreenshotCat-annotation-{Guid.NewGuid():N}.png");
             snapshot.Save(path, ImageFormat.Png);
-            return path;
+            return new CapturedSnapshot(path, snapshot.Size);
         }
         catch
         {
-            return null;
+            try
+            {
+                return TryCaptureTargetWithPrintWindow(targetBounds);
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 
-    private string? TryCaptureTargetWithPrintWindow(System.Drawing.Rectangle targetBounds)
+    private CapturedSnapshot? TryCaptureTargetWithPrintWindow(System.Drawing.Rectangle targetBounds)
     {
         using var rawSnapshot = new System.Drawing.Bitmap(
             targetBounds.Width,
@@ -206,7 +288,7 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
             System.IO.Path.GetTempPath(),
             $"ScreenshotCat-annotation-{Guid.NewGuid():N}.png");
         rawSnapshot.Save(path, ImageFormat.Png);
-        return path;
+        return new CapturedSnapshot(path, rawSnapshot.Size);
     }
 
     private static bool IsLikelyBlankSnapshot(System.Drawing.Bitmap bitmap)
@@ -284,10 +366,17 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
         }
 
         _targetUnavailableTicks = 0;
+        if (_isPaused || TargetSnapshot.Source is null)
+        {
+            HideOverlay();
+            return;
+        }
+
         var hwnd = WindowNative.GetWindowHandle(this);
         var foreground = NativeMethods.GetForegroundWindow();
         var foregroundRoot = NativeMethods.GetAncestor(foreground, NativeMethods.GaRoot);
-        if (foreground != _targetHwnd
+        if (!_isPaused
+            && foreground != _targetHwnd
             && foregroundRoot != _targetHwnd
             && foreground != hwnd
             && foregroundRoot != hwnd
@@ -344,6 +433,11 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
 
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (_isPaused)
+        {
+            return;
+        }
+
         var point = e.GetCurrentPoint(Root);
         if (!point.Properties.IsLeftButtonPressed
             || point.Position.Y <= TopBarHeight)
@@ -733,19 +827,28 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
 
     private void WindowAnnotationOverlayWindow_Closed(object sender, WindowEventArgs args)
     {
+        _isClosed = true;
+        _snapshotRefreshVersion++;
         _followTimer.Stop();
         _targetWindowTracker.Dispose();
         TargetSnapshot.Source = null;
         if (_snapshotPath is not null)
         {
-            try
-            {
-                File.Delete(_snapshotPath);
-            }
-            catch
-            {
-                // Temporary snapshots are best-effort cleanup only.
-            }
+            DeleteSnapshot(_snapshotPath);
         }
     }
+
+    private static void DeleteSnapshot(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch
+        {
+            // Temporary snapshots are best-effort cleanup only.
+        }
+    }
+
+    private sealed record CapturedSnapshot(string Path, System.Drawing.Size PixelSize);
 }

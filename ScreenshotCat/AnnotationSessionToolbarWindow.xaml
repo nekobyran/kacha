@@ -81,15 +81,15 @@
                 </StackPanel>
             </Grid>
 
-            <ToggleButton
-                x:Name="InteractionToggle"
+            <Button
+                x:Name="PauseButton"
                 Grid.Column="3"
                 MinWidth="86"
                 Height="30"
                 Padding="12,0"
-                Click="InteractionToggle_Click"
-                Content="操作窗口"
-                ToolTipService.ToolTip="开启后可直接操作目标软件" />
+                Click="PauseButton_Click"
+                Content="暂停"
+                ToolTipService.ToolTip="暂停后保留批注，并可直接操作目标窗口；再到其他界面后可继续批注" />
 
             <Button
                 Grid.Column="4"

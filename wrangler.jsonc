@@ -1,11 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kacha-release",
-  "compatibility_date": "2026-07-19",
+  "main": "./worker.js",
+  "compatibility_date": "2026-07-28",
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
     "directory": "./website/.dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
     "not_found_handling": "404-page"
   },
   "observability": {

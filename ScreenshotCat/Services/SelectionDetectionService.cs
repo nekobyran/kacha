@@ -79,7 +79,7 @@ public sealed class SelectionDetectionService
 
     public Rectangle? DetectControlOrWindow(Point screenPoint, Rectangle monitorBounds)
     {
-        var control = TryDetectAutomationElement(screenPoint, monitorBounds);
+        var control = TryDetectControl(screenPoint, monitorBounds);
         if (control.HasValue)
         {
             return control;
@@ -108,28 +108,47 @@ public sealed class SelectionDetectionService
         return new Rectangle(capture.MonitorBounds.Left + left, capture.MonitorBounds.Top + top, width, height);
     }
 
-    private static Rectangle? TryDetectAutomationElement(Point screenPoint, Rectangle monitorBounds)
+    private static Rectangle? TryDetectControl(Point screenPoint, Rectangle monitorBounds)
     {
-        try
-        {
-            var element = System.Windows.Automation.AutomationElement.FromPoint(new System.Windows.Point(screenPoint.X, screenPoint.Y));
-            if (ProcessIdentityService.IsCurrentApplicationProcess((uint)element.Current.ProcessId))
-            {
-                return null;
-            }
-            var rect = element.Current.BoundingRectangle;
-            if (rect.IsEmpty)
-            {
-                return null;
-            }
-
-            var candidate = Rectangle.FromLTRB((int)rect.Left, (int)rect.Top, (int)rect.Right, (int)rect.Bottom);
-            return IsUseful(candidate, monitorBounds) ? Rectangle.Intersect(candidate, monitorBounds) : null;
-        }
-        catch
+        var point = new NativeMethods.POINT { X = screenPoint.X, Y = screenPoint.Y };
+        var hwnd = NativeMethods.WindowFromPoint(point);
+        if (hwnd == 0)
         {
             return null;
         }
+
+        NativeMethods.GetWindowThreadProcessId(hwnd, out var processId);
+        if (ProcessIdentityService.IsCurrentApplicationProcess(processId))
+        {
+            return null;
+        }
+
+        // Prefer the deepest visible child under the cursor for control-sized selection.
+        var leaf = hwnd;
+        for (var depth = 0; depth < 8; depth++)
+        {
+            if (!NativeMethods.ScreenToClient(leaf, ref point))
+            {
+                break;
+            }
+
+            var child = NativeMethods.RealChildWindowFromPoint(leaf, point);
+            if (child == 0 || child == leaf)
+            {
+                break;
+            }
+
+            leaf = child;
+            point = new NativeMethods.POINT { X = screenPoint.X, Y = screenPoint.Y };
+        }
+
+        if (!NativeMethods.GetWindowRect(leaf, out var rect))
+        {
+            return null;
+        }
+
+        var candidate = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        return IsUseful(candidate, monitorBounds) ? Rectangle.Intersect(candidate, monitorBounds) : null;
     }
 
     private static Rectangle? TryDetectWindow(Point screenPoint, Rectangle monitorBounds)

@@ -128,7 +128,7 @@ public sealed partial class MainWindow : Window
                 returnToPersistentToolbar = true;
                 _ = SaveAnnotationSessionAsync(annotationWindow, sessionToolbar);
             },
-            annotationWindow.SetTargetInteractionEnabled);
+            annotationWindow.SetPaused);
         _annotationOverlayWindow = annotationWindow;
         _annotationSessionToolbarWindow = sessionToolbar;
         annotationWindow.SetCompanionToolbarWindow(WindowNative.GetWindowHandle(sessionToolbar));
@@ -262,6 +262,9 @@ public sealed partial class MainWindow : Window
         {
             _persistentWindowService.Remember(targetHwnd);
         }
+
+        NativeMethods.BringWindowToTop(targetHwnd);
+        NativeMethods.SetForegroundWindow(targetHwnd);
 
         var toolbar = new AttachedToolbarWindow(targetHwnd, hwnd => DispatcherQueue.TryEnqueue(() => StartDirectAnnotationForWindow(hwnd)));
         _attachedToolbarWindows[targetHwnd] = toolbar;

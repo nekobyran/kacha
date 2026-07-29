@@ -14,11 +14,11 @@
 
 ## 下载与使用
 
-1. 在 [Releases](https://github.com/nekobyran/ScreenshotCat/releases) 下载最新的 `ScreenshotCat-*-win-x64.zip`。
-2. 解压到任意目录。
-3. 运行 `ScreenshotCat.exe`。
+1. 在 [Releases](https://github.com/nekobyran/kacha/releases) 下载最新的 `ScreenshotCat-*-win-x64-setup.exe`。
+2. 运行 Setup，按向导完成当前用户安装。
+3. 也可下载同版本 ZIP，解压后直接运行 `ScreenshotCat.exe`。
 
-当前发布包面向 Windows 10 1809（版本 17763）及以上的 64 位系统。程序暂未进行商业代码签名，首次运行时 Windows 可能显示安全提示；请只从本仓库 Releases 下载，并核对发布页提供的 SHA-256。
+当前 Release 面向 Windows 10 1809（版本 17763）及以上的 64 位系统，并自带裁剪后的 .NET 运行时。为控制体积，包内不重复携带完整 Windows App Runtime；运行前需安装匹配的 [Windows App Runtime](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)（Windows 11 多数环境已预装）。程序暂未进行商业代码签名，首次运行时 Windows 可能显示安全提示；请只从本仓库 Releases 下载，并核对同名 `.sha256`。
 
 ## 从源码构建
 
@@ -26,10 +26,10 @@
 
 ```powershell
 pwsh -File .\command\Build-ScreenshotCat.ps1 -Action Validate
-pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.0
+pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.2
 ```
 
-脚本会把 SDK 缓存、临时文件和 NuGet 包放在 `D:\vibecoding\sdk`（存在该工作区时），避免占用系统盘；发布包输出到 `release/ScreenshotCat_Windows/release` 对应的工作区发布目录。
+本项目只执行 Release 验证和构建，不生成 Debug 版本。`PackageRelease` 会执行 Release 验证、partial IL 裁剪、剥离调试/诊断文件，并同时输出 ZIP、Setup 及各自 SHA-256。SDK 缓存、临时文件和 NuGet 包位于 `D:\vibecoding\sdk`，发布包输出到工作区 `release/ScreenshotCat_Windows/release/`。
 
 ## 隐私
 

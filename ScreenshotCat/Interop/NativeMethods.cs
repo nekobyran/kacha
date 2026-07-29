@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.IO;
 using System.Text;
 
 namespace ScreenshotCat.Interop;
@@ -11,8 +12,11 @@ internal static partial class NativeMethods
     internal const int SwShowNoActivate = 4;
     internal const int WhHotkey = 0x0312;
     internal const int WhKeyboardLl = 13;
+    internal const int WhMouseLl = 14;
     internal const int WmKeyDown = 0x0100;
+    internal const int WmKeyUp = 0x0101;
     internal const int WmSysKeyDown = 0x0104;
+    internal const int WmSysKeyUp = 0x0105;
     internal const int WmNcHitTest = 0x0084;
     internal const int HtTransparent = -1;
     internal const int GwlStyle = -16;
@@ -39,6 +43,7 @@ internal static partial class NativeMethods
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpFrameChanged = 0x0020;
     internal const int VkControl = 0x11;
+    internal const int VkEscape = 0x1B;
     internal const int VkMenu = 0x12;
     internal const int VkQ = 0x51;
     internal const int VkScroll = 0x91;
@@ -48,6 +53,7 @@ internal static partial class NativeMethods
     internal const uint ModNoRepeat = 0x4000;
     internal const uint DwmColorNone = 0xFFFFFFFE;
     internal const uint PwRenderFullContent = 0x00000002;
+    internal const int RgnOr = 2;
     internal const int WcaAccentPolicy = 19;
     internal const int AccentEnableAcrylicBlurBehind = 4;
     internal const uint EventObjectLocationChange = 0x800B;
@@ -57,9 +63,11 @@ internal static partial class NativeMethods
     internal const long WsExNoActivate = 0x08000000L;
     internal const int ObjidWindow = 0;
     internal const int ChildidSelf = 0;
+    internal const uint WmRButtonDown = 0x0204;
 
     internal delegate nint SubclassProc(nint hwnd, uint msg, nuint wParam, nint lParam, nuint idSubclass, nuint refData);
     internal delegate nint LowLevelKeyboardProc(int nCode, nuint wParam, nint lParam);
+    internal delegate nint LowLevelMouseProc(int nCode, nuint wParam, nint lParam);
     internal delegate bool EnumWindowsProc(nint hwnd, nint lParam);
     internal delegate void WinEventProc(
         nint winEventHook,
@@ -102,6 +110,12 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll")]
     internal static partial nint WindowFromPoint(POINT point);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ScreenToClient(nint hWnd, ref POINT lpPoint);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint RealChildWindowFromPoint(nint hwndParent, POINT ptParentClientCoords);
 
     [LibraryImport("user32.dll")]
     internal static partial nint GetForegroundWindow();
@@ -167,6 +181,9 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "SetWindowsHookExW")]
     internal static partial nint SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, nint hmod, uint dwThreadId);
 
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowsHookExW")]
+    internal static partial nint SetWindowsMouseHookEx(int idHook, LowLevelMouseProc lpfn, nint hmod, uint dwThreadId);
+
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool UnhookWindowsHookEx(nint hhk);
@@ -201,8 +218,20 @@ internal static partial class NativeMethods
     internal static partial nint CreateRectRgn(int left, int top, int right, int bottom);
 
     [LibraryImport("gdi32.dll")]
+    internal static partial nint CreateRoundRectRgn(
+        int left,
+        int top,
+        int right,
+        int bottom,
+        int ellipseWidth,
+        int ellipseHeight);
+
+    [LibraryImport("gdi32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool DeleteObject(nint handle);
+
+    [LibraryImport("gdi32.dll")]
+    internal static partial int CombineRgn(nint destination, nint source1, nint source2, int combineMode);
 
     [LibraryImport("user32.dll")]
     internal static partial int SetWindowRgn(nint hwnd, nint region, [MarshalAs(UnmanagedType.Bool)] bool redraw);
@@ -211,6 +240,203 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool SetWindowCompositionAttribute(nint hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
 
+
+    internal const uint WmApp = 0x8000;
+    internal const uint WmCommand = 0x0111;
+    internal const uint WmLButtonDblClk = 0x0203;
+    internal const uint WmRButtonUp = 0x0205;
+    internal const uint WmContextMenu = 0x007B;
+
+    internal const uint NimAdd = 0x00000000;
+    internal const uint NimModify = 0x00000001;
+    internal const uint NimDelete = 0x00000002;
+    internal const uint NifMessage = 0x00000001;
+    internal const uint NifIcon = 0x00000002;
+    internal const uint NifTip = 0x00000004;
+
+    internal const uint MfString = 0x00000000;
+    internal const uint MfSeparator = 0x00000800;
+    internal const uint TpmRightButton = 0x0002;
+    internal const uint TpmReturnCmd = 0x0100;
+    internal const uint ImageIcon = 1;
+    internal const uint LrLoadFromFile = 0x00000010;
+    internal const uint LrDefaultSize = 0x00000040;
+    internal const int HwndMessage = -3;
+
+    internal delegate nint WndProc(nint hWnd, uint msg, nuint wParam, nint lParam);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "Shell_NotifyIconW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool Shell_NotifyIcon(uint dwMessage, ref NOTIFYICONDATA lpData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "LoadImageW")]
+    internal static extern nint LoadImage(
+        nint hInst,
+        string name,
+        uint type,
+        int cx,
+        int cy,
+        uint fuLoad);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DestroyIcon(nint hIcon);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegisterClassExW")]
+    internal static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "UnregisterClassW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnregisterClass(nint lpClassName, nint hInstance);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateWindowExW")]
+    internal static extern nint CreateWindowEx(
+        uint dwExStyle,
+        nint lpClassName,
+        string? lpWindowName,
+        uint dwStyle,
+        int x,
+        int y,
+        int nWidth,
+        int nHeight,
+        nint hWndParent,
+        nint hMenu,
+        nint hInstance,
+        nint lpParam);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DestroyWindow(nint hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
+    internal static partial nint DefWindowProc(nint hWnd, uint msg, nuint wParam, nint lParam);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial nint GetModuleHandle(string? lpModuleName);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint CreatePopupMenu();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "AppendMenuW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AppendMenu(nint hMenu, uint uFlags, nuint uIDNewItem, string? lpNewItem);
+
+    [LibraryImport("user32.dll")]
+    internal static partial uint TrackPopupMenu(nint hMenu, uint uFlags, int x, int y, int nReserved, nint hWnd, nint prcRect);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DestroyMenu(nint hMenu);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool PostMessage(nint hWnd, uint msg, nuint wParam, nint lParam);
+
+    internal static ushort RegisterWindowClass(string className, WndProc wndProc)
+    {
+        var hInstance = GetModuleHandle(null);
+        var wndClass = new WNDCLASSEX
+        {
+            cbSize = (uint)Marshal.SizeOf<WNDCLASSEX>(),
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(wndProc),
+            hInstance = hInstance,
+            lpszClassName = className
+        };
+        var atom = RegisterClassEx(ref wndClass);
+        if (atom == 0)
+        {
+            throw new InvalidOperationException($"RegisterClassEx failed with error {Marshal.GetLastPInvokeError()}.");
+        }
+
+        return atom;
+    }
+
+    internal static nint CreateMessageWindow(ushort classAtom, string windowName)
+    {
+        return CreateWindowEx(
+            0,
+            new nint(classAtom),
+            windowName,
+            0,
+            0,
+            0,
+            0,
+            0,
+            new nint(HwndMessage),
+            0,
+            GetModuleHandle(null),
+            0);
+    }
+
+    internal static nint LoadIconFromFile(string iconPath)
+    {
+        if (!string.IsNullOrWhiteSpace(iconPath) && File.Exists(iconPath))
+        {
+            var handle = LoadImage(0, iconPath, ImageIcon, 0, 0, LrLoadFromFile | LrDefaultSize);
+            if (handle != 0)
+            {
+                return handle;
+            }
+        }
+
+        return 0;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct NOTIFYICONDATA
+    {
+        public uint cbSize;
+        public nint hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public nint hIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szTip;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct WNDCLASSEX
+    {
+        public uint cbSize;
+        public uint style;
+        public nint lpfnWndProc;
+        public int cbClsExtra;
+        public int cbWndExtra;
+        public nint hInstance;
+        public nint hIcon;
+        public nint hCursor;
+        public nint hbrBackground;
+        public string? lpszMenuName;
+        public string lpszClassName;
+        public nint hIconSm;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
+    internal static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    internal static string GetWindowClassName(nint hWnd)
+    {
+        if (hWnd == 0)
+        {
+            return string.Empty;
+        }
+
+        var buffer = new StringBuilder(256);
+        var length = GetClassName(hWnd, buffer, buffer.Capacity);
+        return length > 0 ? buffer.ToString(0, length) : string.Empty;
+    }
+
+    internal static bool IsDesktopLikeWindow(nint hWnd)
+    {
+        if (hWnd == 0)
+        {
+            return true;
+        }
+
+        var className = GetWindowClassName(hWnd);
+        return className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "Windows.UI.Core.CoreWindow";
+    }
     internal static void DisableDwmBorder(nint hwnd)
     {
         var doNotRound = 1u;
@@ -377,6 +603,16 @@ internal static partial class NativeMethods
     {
         public int X;
         public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public nuint dwExtraInfo;
     }
 
     [StructLayout(LayoutKind.Sequential)]

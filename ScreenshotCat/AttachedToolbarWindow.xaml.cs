@@ -135,20 +135,26 @@ public sealed partial class AttachedToolbarWindow : Window
         {
             cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>()
         };
-        var workTop = NativeMethods.GetMonitorInfo(monitor, ref monitorInfo)
-            ? monitorInfo.rcWork.Top
-            : 0;
-        var toolbarHeight = NativeMethods.DipToPhysicalPixels(hwnd, ToolbarHeightDip);
-        var y = rect.Top - toolbarHeight;
-        if (y < workTop)
+        var hasMonitorInfo = NativeMethods.GetMonitorInfo(monitor, ref monitorInfo);
+        var monitorLeft = hasMonitorInfo ? monitorInfo.rcMonitor.Left : rect.Left;
+        var monitorTop = hasMonitorInfo ? monitorInfo.rcMonitor.Top : rect.Top;
+        var monitorRight = hasMonitorInfo ? monitorInfo.rcMonitor.Right : rect.Right;
+        var monitorBottom = hasMonitorInfo ? monitorInfo.rcMonitor.Bottom : rect.Bottom;
+        var toolbarX = Math.Max(rect.Left, monitorLeft);
+        var toolbarWidth = Math.Max(0, Math.Min(rect.Right, monitorRight) - toolbarX);
+        if (toolbarWidth < 240)
         {
-            y = rect.Top;
+            HideToolbar();
+            return true;
         }
 
+        var toolbarHeight = NativeMethods.DipToPhysicalPixels(hwnd, ToolbarHeightDip);
+        var y = Math.Clamp(rect.Top - toolbarHeight, monitorTop, Math.Max(monitorTop, monitorBottom - toolbarHeight));
+
         var currentBoundsMatch = NativeMethods.GetWindowRect(hwnd, out var currentRect)
-            && currentRect.Left == rect.Left
+            && currentRect.Left == toolbarX
             && currentRect.Top == y
-            && currentRect.Right - currentRect.Left == targetWidth
+            && currentRect.Right - currentRect.Left == toolbarWidth
             && currentRect.Bottom - currentRect.Top == toolbarHeight;
         var boundsChanged = !currentBoundsMatch
             || !_lastTargetRect.HasValue
@@ -160,17 +166,13 @@ public sealed partial class AttachedToolbarWindow : Window
             || _lastToolbarHeight != toolbarHeight;
         if (boundsChanged)
         {
-            _appWindow?.MoveAndResize(new RectInt32(rect.Left, y, targetWidth, toolbarHeight));
+            _appWindow?.MoveAndResize(new RectInt32(toolbarX, y, toolbarWidth, toolbarHeight));
             var settledToolbarHeight = NativeMethods.DipToPhysicalPixels(hwnd, ToolbarHeightDip);
             if (settledToolbarHeight != toolbarHeight)
             {
                 toolbarHeight = settledToolbarHeight;
-                y = rect.Top - toolbarHeight;
-                if (y < workTop)
-                {
-                    y = rect.Top;
-                }
-                _appWindow?.MoveAndResize(new RectInt32(rect.Left, y, targetWidth, toolbarHeight));
+                y = Math.Clamp(rect.Top - toolbarHeight, monitorTop, Math.Max(monitorTop, monitorBottom - toolbarHeight));
+                _appWindow?.MoveAndResize(new RectInt32(toolbarX, y, toolbarWidth, toolbarHeight));
             }
             _lastTargetRect = rect;
             _lastToolbarY = y;
