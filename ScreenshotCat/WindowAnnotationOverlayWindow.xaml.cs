@@ -49,6 +49,7 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
     private nint _companionToolbarHwnd;
 
     public int CommentCount => _comments.Count;
+    public bool ReturnToPersistentToolbarOnExit { get; private set; } = true;
 
     public event EventHandler<int>? CommentCountChanged;
     public event EventHandler? ExitAnnotationModeRequested;
@@ -513,9 +514,10 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
         }
     }
 
-    private void RequestExitAnnotationMode()
+    public void RequestExitAnnotationMode(bool returnToPersistentToolbar = true)
     {
         CancelDraft();
+        ReturnToPersistentToolbarOnExit = returnToPersistentToolbar;
         if (ExitAnnotationModeRequested is null)
         {
             Close();

@@ -121,7 +121,11 @@ public sealed partial class MainWindow : Window
         sessionToolbar = new AnnotationSessionToolbarWindow(
             targetHwnd,
             WindowNative.GetWindowHandle(annotationWindow),
-            annotationWindow.Close,
+            () =>
+            {
+                _persistentWindowService.Forget(targetHwnd);
+                annotationWindow.RequestExitAnnotationMode(returnToPersistentToolbar: false);
+            },
             annotationWindow.ClearAnnotations,
             () =>
             {
@@ -135,8 +139,8 @@ public sealed partial class MainWindow : Window
         annotationWindow.CommentCountChanged += (_, count) => sessionToolbar.SetCommentCount(count);
         annotationWindow.ExitAnnotationModeRequested += (_, _) =>
         {
-            returnToPersistentToolbar = true;
-            annotationWindow.Close();
+            returnToPersistentToolbar = annotationWindow.ReturnToPersistentToolbarOnExit;
+            _ = ExitAnnotationSessionAsync(annotationWindow, sessionToolbar);
         };
         annotationWindow.Closed += (_, _) =>
         {
@@ -156,6 +160,10 @@ public sealed partial class MainWindow : Window
             {
                 _activeAnnotationSessionId = Guid.Empty;
                 _activeAnnotationTargetHwnd = 0;
+                if (_hotkeyService is not null)
+                {
+                    _hotkeyService.AnnotationModeActive = false;
+                }
             }
 
             if (ownsActiveSession
@@ -166,6 +174,10 @@ public sealed partial class MainWindow : Window
             }
         };
         annotationWindow.StartFollowing();
+        if (_hotkeyService is not null)
+        {
+            _hotkeyService.AnnotationModeActive = true;
+        }
         sessionToolbar.SetCommentCount(annotationWindow.CommentCount);
         sessionToolbar.StartFollowing();
     }
@@ -200,6 +212,19 @@ public sealed partial class MainWindow : Window
         {
             sessionToolbar.SetSavingState(false, "保存失败，请重试");
         }
+    }
+
+    private async Task ExitAnnotationSessionAsync(
+        WindowAnnotationOverlayWindow annotationWindow,
+        AnnotationSessionToolbarWindow sessionToolbar)
+    {
+        if (annotationWindow.CommentCount == 0)
+        {
+            annotationWindow.Close();
+            return;
+        }
+
+        await SaveAnnotationSessionAsync(annotationWindow, sessionToolbar);
     }
 
     public async Task<bool> CopyLastAsync()
@@ -298,6 +323,71 @@ public sealed partial class MainWindow : Window
         _hotkeyService = new HotkeyService(this);
         HotkeyRegistered = _hotkeyService.Register();
         _hotkeyService.CaptureRequested += (_, _) => DispatcherQueue.TryEnqueue(StartCapture);
+        _hotkeyService.AnnotationHotkeyRequested += (_, gesture) =>
+            DispatcherQueue.TryEnqueue(() => HandleAnnotationHotkey(gesture));
+    }
+
+    private void HandleAnnotationHotkey(AnnotationHotkeyGestureResult gesture)
+    {
+        switch (gesture.Action)
+        {
+            case AnnotationHotkeyAction.TogglePause:
+                _annotationSessionToolbarWindow?.TogglePaused();
+                break;
+            case AnnotationHotkeyAction.ToggleMode:
+                if (_annotationOverlayWindow is not null)
+                {
+                    _annotationOverlayWindow.RequestExitAnnotationMode();
+                    break;
+                }
+
+                var toggleTarget = ResolveAnnotationTarget(gesture.TargetHwnd);
+                if (toggleTarget != 0)
+                {
+                    StartDirectAnnotationForWindow(toggleTarget);
+                }
+                break;
+            case AnnotationHotkeyAction.HideToolbar:
+                HideAnnotationUiForWindow(ResolveAnnotationTarget(gesture.TargetHwnd));
+                break;
+        }
+    }
+
+    private nint ResolveAnnotationTarget(nint foregroundHwnd)
+    {
+        if (_activeAnnotationTargetHwnd != 0)
+        {
+            return _activeAnnotationTargetHwnd;
+        }
+
+        if (foregroundHwnd == 0 || !NativeMethods.IsWindowVisible(foregroundHwnd))
+        {
+            return 0;
+        }
+
+        _ = NativeMethods.GetWindowThreadProcessId(foregroundHwnd, out var processId);
+        return processId != 0 && !ProcessIdentityService.IsCurrentApplicationProcess(processId)
+            ? foregroundHwnd
+            : 0;
+    }
+
+    private void HideAnnotationUiForWindow(nint targetHwnd)
+    {
+        if (targetHwnd == 0)
+        {
+            return;
+        }
+
+        _persistentWindowService.Forget(targetHwnd);
+        if (_attachedToolbarWindows.Remove(targetHwnd, out var toolbar))
+        {
+            toolbar.Close();
+        }
+
+        if (targetHwnd == _activeAnnotationTargetHwnd)
+        {
+            _annotationOverlayWindow?.RequestExitAnnotationMode(returnToPersistentToolbar: false);
+        }
     }
 
     private async Task OnScreenshotSavedAsync(SaveResult result)

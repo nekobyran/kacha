@@ -14,13 +14,61 @@ try
     {
         VerifyAnnotationSession(root, "dpi-96", 1000, 800, 1000, 800),
         VerifyAnnotationSession(root, "dpi-120", 800, 640, 1000, 800),
-        VerifySecondaryOrigin(root)
+        VerifySecondaryOrigin(root),
+        VerifyAnnotationHotkeyGesture()
     };
     Console.WriteLine(JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
 }
 finally
 {
     Directory.Delete(root, recursive: true);
+}
+
+static object VerifyAnnotationHotkeyGesture()
+{
+    var gesture = new AnnotationHotkeyGesture();
+    var target = new nint(4242);
+
+    AssertGesture(gesture.OnCtrlTabDown(target, 1_000), true, AnnotationHotkeyAction.None, "short down");
+    AssertGesture(gesture.OnCtrlTabUp(1_300), true, AnnotationHotkeyAction.ToggleMode, "short up");
+
+    AssertGesture(gesture.OnCtrlTabDown(target, 2_000), true, AnnotationHotkeyAction.None, "long down");
+    AssertGesture(
+        gesture.OnCtrlTabLongPress(2_000 + AnnotationHotkeyGesture.LongPressMilliseconds),
+        true,
+        AnnotationHotkeyAction.HideToolbar,
+        "long threshold");
+    AssertGesture(gesture.OnCtrlTabUp(2_900), true, AnnotationHotkeyAction.None, "long up");
+
+    AssertGesture(gesture.OnPlainTabDown(annotationModeActive: false), false, AnnotationHotkeyAction.None, "tab passthrough");
+    AssertGesture(gesture.OnPlainTabDown(annotationModeActive: true), true, AnnotationHotkeyAction.TogglePause, "pause");
+    AssertGesture(gesture.OnPlainTabDown(annotationModeActive: true), true, AnnotationHotkeyAction.None, "tab repeat");
+    AssertGesture(gesture.OnPlainTabUp(), true, AnnotationHotkeyAction.None, "tab up");
+    AssertGesture(gesture.OnPlainTabDown(annotationModeActive: true), true, AnnotationHotkeyAction.TogglePause, "resume");
+    AssertGesture(gesture.OnPlainTabUp(), true, AnnotationHotkeyAction.None, "resume up");
+
+    return new
+    {
+        Case = "annotation-hotkey-gesture",
+        ShortPress = "toggle-mode",
+        LongPressMilliseconds = AnnotationHotkeyGesture.LongPressMilliseconds,
+        LongPress = "hide-toolbar",
+        Tab = "pause-resume",
+        Passed = true
+    };
+}
+
+static void AssertGesture(
+    AnnotationHotkeyGestureResult result,
+    bool handled,
+    AnnotationHotkeyAction action,
+    string label)
+{
+    if (result.Handled != handled || result.Action != action)
+    {
+        throw new InvalidOperationException(
+            $"{label}: expected handled={handled}, action={action}; actual handled={result.Handled}, action={result.Action}.");
+    }
 }
 
 static object VerifyAnnotationSession(

@@ -46,6 +46,7 @@ internal static partial class NativeMethods
     internal const int VkEscape = 0x1B;
     internal const int VkMenu = 0x12;
     internal const int VkQ = 0x51;
+    internal const int VkTab = 0x09;
     internal const int VkScroll = 0x91;
     internal const int VkN = 0x4E;
     internal const uint ModAlt = 0x0001;

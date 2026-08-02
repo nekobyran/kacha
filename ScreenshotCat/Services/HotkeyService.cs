@@ -10,13 +10,24 @@ public sealed class HotkeyService : IDisposable
     private readonly nint _hwnd;
     private readonly NativeMethods.SubclassProc _subclassProc;
     private readonly NativeMethods.LowLevelKeyboardProc _keyboardProc;
+    private readonly AnnotationHotkeyGesture _annotationGesture = new();
+    private readonly object _annotationGestureLock = new();
     private nint _keyboardHook;
+    private Timer? _ctrlTabLongPressTimer;
     private long _lastHookTriggerTicks;
     private bool _scrollRegistered;
     private bool _ctrlAltNRegistered;
     private bool _subclassed;
+    private volatile bool _annotationModeActive;
 
     public event EventHandler? CaptureRequested;
+    public event EventHandler<AnnotationHotkeyGestureResult>? AnnotationHotkeyRequested;
+
+    public bool AnnotationModeActive
+    {
+        get => _annotationModeActive;
+        set => _annotationModeActive = value;
+    }
 
     public HotkeyService(Microsoft.UI.Xaml.Window window)
     {
@@ -42,7 +53,7 @@ public sealed class HotkeyService : IDisposable
         var hookAvailable = _keyboardHook != 0;
         var scrollAvailable = (_subclassed && _scrollRegistered) || hookAvailable;
         var ctrlAltNAvailable = (_subclassed && _ctrlAltNRegistered) || hookAvailable;
-        return scrollAvailable && ctrlAltNAvailable;
+        return scrollAvailable && ctrlAltNAvailable && hookAvailable;
     }
 
     private nint WndProc(nint hwnd, uint msg, nuint wParam, nint lParam, nuint idSubclass, nuint refData)
@@ -59,9 +70,26 @@ public sealed class HotkeyService : IDisposable
 
     private nint KeyboardProc(int nCode, nuint wParam, nint lParam)
     {
-        if (nCode >= 0 && (wParam == NativeMethods.WmKeyDown || wParam == NativeMethods.WmSysKeyDown))
+        if (nCode >= 0)
         {
             var data = System.Runtime.InteropServices.Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
+            var isKeyDown = wParam == NativeMethods.WmKeyDown || wParam == NativeMethods.WmSysKeyDown;
+            var isKeyUp = wParam == NativeMethods.WmKeyUp || wParam == NativeMethods.WmSysKeyUp;
+            if (data.vkCode == NativeMethods.VkTab && (isKeyDown || isKeyUp))
+            {
+                var result = HandleTabKey(isKeyDown);
+                if (result.Handled)
+                {
+                    DispatchAnnotationGesture(result);
+                    return 1;
+                }
+            }
+
+            if (!isKeyDown)
+            {
+                return NativeMethods.CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
+            }
+
             var scrollPressed = data.vkCode == NativeMethods.VkScroll
                 && !(_subclassed && _scrollRegistered);
             var ctrlAltNPressed = data.vkCode == NativeMethods.VkN
@@ -82,8 +110,72 @@ public sealed class HotkeyService : IDisposable
         return NativeMethods.CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
     }
 
+    private AnnotationHotkeyGestureResult HandleTabKey(bool isKeyDown)
+    {
+        lock (_annotationGestureLock)
+        {
+            if (isKeyDown)
+            {
+                var controlPressed = (NativeMethods.GetAsyncKeyState(NativeMethods.VkControl) & 0x8000) != 0;
+                if (!controlPressed)
+                {
+                    return _annotationGesture.OnPlainTabDown(AnnotationModeActive);
+                }
+
+                var foreground = NativeMethods.GetForegroundWindow();
+                var target = NativeMethods.GetAncestor(foreground, NativeMethods.GaRoot);
+                var result = _annotationGesture.OnCtrlTabDown(target, Environment.TickCount64);
+                _ctrlTabLongPressTimer ??= new Timer(
+                    _ => HandleCtrlTabLongPress(),
+                    null,
+                    AnnotationHotkeyGesture.LongPressMilliseconds,
+                    Timeout.Infinite);
+                return result;
+            }
+
+            var ctrlTabResult = _annotationGesture.OnCtrlTabUp(Environment.TickCount64);
+            if (ctrlTabResult.Handled)
+            {
+                StopCtrlTabTimer();
+                return ctrlTabResult;
+            }
+
+            return _annotationGesture.OnPlainTabUp();
+        }
+    }
+
+    private void HandleCtrlTabLongPress()
+    {
+        AnnotationHotkeyGestureResult result;
+        lock (_annotationGestureLock)
+        {
+            result = _annotationGesture.OnCtrlTabLongPress(Environment.TickCount64);
+        }
+
+        DispatchAnnotationGesture(result);
+    }
+
+    private void DispatchAnnotationGesture(AnnotationHotkeyGestureResult result)
+    {
+        if (result.Action != AnnotationHotkeyAction.None)
+        {
+            AnnotationHotkeyRequested?.Invoke(this, result);
+        }
+    }
+
+    private void StopCtrlTabTimer()
+    {
+        _ctrlTabLongPressTimer?.Dispose();
+        _ctrlTabLongPressTimer = null;
+    }
+
     public void Dispose()
     {
+        lock (_annotationGestureLock)
+        {
+            StopCtrlTabTimer();
+        }
+
         if (_scrollRegistered)
         {
             NativeMethods.UnregisterHotKey(_hwnd, ScrollCaptureHotkeyId);

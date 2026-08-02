@@ -344,6 +344,11 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
 
     private void PauseButton_Click(object sender, RoutedEventArgs e)
     {
+        TogglePaused();
+    }
+
+    public void TogglePaused()
+    {
         _isPaused = !_isPaused;
         UpdateStatusAndPauseUi();
         FinishButton.IsEnabled = _commentCount > 0 && !_isPaused;
