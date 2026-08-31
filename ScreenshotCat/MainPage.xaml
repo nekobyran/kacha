@@ -24,14 +24,21 @@
                 <TextBlock Text="截图工具" FontSize="20" FontWeight="SemiBold" />
                 <TextBlock x:Name="HotkeyText" FontSize="12" Opacity="0.72" />
             </StackPanel>
-            <ToggleSwitch
-                x:Name="GraphicToggle"
-                Grid.Column="1"
-                Header="图形识别"
-                IsOn="False"
-                OffContent="关"
-                OnContent="开"
-                Toggled="GraphicToggle_Toggled" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Click="HotkeySettingsButton_Click" ToolTipService.ToolTip="快捷键管理">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <SymbolIcon Symbol="Setting" />
+                        <TextBlock Text="快捷键" />
+                    </StackPanel>
+                </Button>
+                <ToggleSwitch
+                    x:Name="GraphicToggle"
+                    Header="图形识别"
+                    IsOn="False"
+                    OffContent="关"
+                    OnContent="开"
+                    Toggled="GraphicToggle_Toggled" />
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Row="1" ColumnSpacing="8">

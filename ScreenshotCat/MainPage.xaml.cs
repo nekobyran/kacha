@@ -22,14 +22,121 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        RefreshHotkeyStatus();
+        _mainWindow.ScreenshotSaved += MainWindow_ScreenshotSaved;
+    }
+
+    private void RefreshHotkeyStatus()
+    {
+        if (_mainWindow is null)
+        {
+            return;
+        }
+
+        var settings = _mainWindow.HotkeySettings;
         var hotkeyStatus = _mainWindow.HotkeyRegistered
-            ? "截图键 Scroll Lock 与 Ctrl+Alt+N 已启用。"
-            : "截图键注册失败，可能已被其他应用占用。";
+            ? $"截图键 {settings.PrimaryCapture} 与 {settings.SecondaryCapture} 已启用。"
+            : $"截图键 {settings.PrimaryCapture} / {settings.SecondaryCapture} 注册失败。";
         var startupStatus = _mainWindow.StartupRegistered
             ? "开机自启已启用。"
             : "开机自启注册失败。";
         HotkeyText.Text = $"{hotkeyStatus} {startupStatus}";
-        _mainWindow.ScreenshotSaved += MainWindow_ScreenshotSaved;
+    }
+
+    private async void HotkeySettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mainWindow is null)
+        {
+            return;
+        }
+
+        var current = _mainWindow.HotkeySettings;
+        var primaryBox = new TextBox
+        {
+            Header = "主截图快捷键",
+            Text = current.PrimaryCapture.ToString(),
+            PlaceholderText = "例如 Ctrl+Shift+S",
+            Width = 320
+        };
+        var secondaryBox = new TextBox
+        {
+            Header = "备用截图快捷键",
+            Text = current.SecondaryCapture.ToString(),
+            PlaceholderText = "例如 Ctrl+Alt+N",
+            Width = 320
+        };
+        var errorInfo = new InfoBar
+        {
+            Severity = InfoBarSeverity.Error,
+            IsOpen = false,
+            IsClosable = false
+        };
+        var resetButton = new Button
+        {
+            Content = "恢复默认",
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        resetButton.Click += (_, _) =>
+        {
+            primaryBox.Text = HotkeySettings.Default.PrimaryCapture.ToString();
+            secondaryBox.Text = HotkeySettings.Default.SecondaryCapture.ToString();
+            errorInfo.IsOpen = false;
+        };
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            Text = "支持 Ctrl / Alt / Shift / Win + A-Z、0-9、F1-F24 和常用功能键。Tab 相关组合保留给批注操作。",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.72,
+            MaxWidth = 320
+        });
+        content.Children.Add(primaryBox);
+        content.Children.Add(secondaryBox);
+        content.Children.Add(resetButton);
+        content.Children.Add(errorInfo);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "快捷键管理",
+            Content = content,
+            PrimaryButtonText = "保存",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (!HotkeyBinding.TryParse(primaryBox.Text, out var primary, out var primaryError))
+            {
+                errorInfo.Message = $"主快捷键：{primaryError}";
+                errorInfo.IsOpen = true;
+                args.Cancel = true;
+                return;
+            }
+
+            if (!HotkeyBinding.TryParse(secondaryBox.Text, out var secondary, out var secondaryError))
+            {
+                errorInfo.Message = $"备用快捷键：{secondaryError}";
+                errorInfo.IsOpen = true;
+                args.Cancel = true;
+                return;
+            }
+
+            var settings = new HotkeySettings(primary, secondary);
+            if (!_mainWindow.TryUpdateHotkeySettings(settings, out var error))
+            {
+                errorInfo.Message = error;
+                errorInfo.IsOpen = true;
+                args.Cancel = true;
+                return;
+            }
+
+            errorInfo.IsOpen = false;
+            RefreshHotkeyStatus();
+        };
+
+        await dialog.ShowAsync();
     }
 
     private void MainWindow_ScreenshotSaved(object? sender, SaveResult result)

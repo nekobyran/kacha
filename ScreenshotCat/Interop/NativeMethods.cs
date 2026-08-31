@@ -42,9 +42,12 @@ internal static partial class NativeMethods
     internal const uint SwpNoZOrder = 0x0004;
     internal const uint SwpNoActivate = 0x0010;
     internal const uint SwpFrameChanged = 0x0020;
+    internal const int VkShift = 0x10;
     internal const int VkControl = 0x11;
     internal const int VkEscape = 0x1B;
     internal const int VkMenu = 0x12;
+    internal const int VkLWin = 0x5B;
+    internal const int VkRWin = 0x5C;
     internal const int VkQ = 0x51;
     internal const int VkTab = 0x09;
     internal const int VkScroll = 0x91;

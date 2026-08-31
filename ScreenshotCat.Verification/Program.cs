@@ -15,7 +15,8 @@ try
         VerifyAnnotationSession(root, "dpi-96", 1000, 800, 1000, 800),
         VerifyAnnotationSession(root, "dpi-120", 800, 640, 1000, 800),
         VerifySecondaryOrigin(root),
-        VerifyAnnotationHotkeyGesture()
+        VerifyAnnotationHotkeyGesture(),
+        VerifyHotkeySettings(root)
     };
     Console.WriteLine(JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
 }
@@ -69,6 +70,80 @@ static void AssertGesture(
         throw new InvalidOperationException(
             $"{label}: expected handled={handled}, action={action}; actual handled={result.Handled}, action={result.Action}.");
     }
+}
+
+static object VerifyHotkeySettings(string root)
+{
+    if (!HotkeyBinding.TryParse("ctrl + shift + s", out var primary, out var primaryError))
+    {
+        throw new InvalidOperationException($"parse primary failed: {primaryError}");
+    }
+    if (primary.ToString() != "Ctrl+Shift+S")
+    {
+        throw new InvalidOperationException($"primary normalization failed: {primary}");
+    }
+    if (!HotkeyBinding.TryParse("F12", out var secondary, out var secondaryError))
+    {
+        throw new InvalidOperationException($"parse secondary failed: {secondaryError}");
+    }
+
+    var settings = new HotkeySettings(primary, secondary);
+    if (!settings.TryValidate(out var validationError))
+    {
+        throw new InvalidOperationException($"settings validation failed: {validationError}");
+    }
+
+    var duplicate = new HotkeySettings(primary, primary);
+    if (duplicate.TryValidate(out _))
+    {
+        throw new InvalidOperationException("duplicate hotkeys should be rejected.");
+    }
+    if (!HotkeyBinding.TryParse("Ctrl+Tab", out var reserved, out var reservedParseError))
+    {
+        throw new InvalidOperationException($"reserved parse failed: {reservedParseError}");
+    }
+    if (new HotkeySettings(primary, reserved).TryValidate(out _))
+    {
+        throw new InvalidOperationException("annotation hotkey should be reserved.");
+    }
+    if (!HotkeyBinding.TryParse("Shift+Tab", out var shiftedTab, out var shiftedTabParseError))
+    {
+        throw new InvalidOperationException($"shifted tab parse failed: {shiftedTabParseError}");
+    }
+    if (new HotkeySettings(primary, shiftedTab).TryValidate(out _))
+    {
+        throw new InvalidOperationException("all Tab combinations should be reserved for annotation.");
+    }
+
+    var settingsPath = Path.Combine(root, "hotkeys", "hotkeys.json");
+    var service = new HotkeySettingsService(settingsPath);
+    if (!service.TrySave(settings, out var saveError))
+    {
+        throw new InvalidOperationException($"settings save failed: {saveError}");
+    }
+    var loaded = service.Load();
+    if (loaded != settings)
+    {
+        throw new InvalidOperationException($"settings roundtrip failed: expected {settings}, actual {loaded}.");
+    }
+
+    File.WriteAllText(settingsPath, "{ invalid json");
+    if (service.Load() != HotkeySettings.Default)
+    {
+        throw new InvalidOperationException("corrupt settings should fall back to defaults.");
+    }
+
+    return new
+    {
+        Case = "hotkey-settings",
+        Primary = primary.ToString(),
+        Secondary = secondary.ToString(),
+        DuplicateRejected = true,
+        AnnotationConflictRejected = true,
+        PersistenceRoundtrip = true,
+        CorruptFallback = true,
+        Passed = true
+    };
 }
 
 static object VerifyAnnotationSession(

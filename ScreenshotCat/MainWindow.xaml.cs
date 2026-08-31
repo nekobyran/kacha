@@ -15,8 +15,10 @@ public sealed partial class MainWindow : Window
     private readonly ClipboardService _clipboardService = new();
     private readonly SelectionDetectionService _selectionDetectionService = new();
     private readonly StartupService _startupService = new();
+    private readonly HotkeySettingsService _hotkeySettingsService = new();
     private readonly PersistentWindowService _persistentWindowService = new();
     private readonly DispatcherTimer _persistentWindowRestoreTimer = new();
+    private HotkeySettings _hotkeySettings = HotkeySettings.Default;
     private readonly TrayService _trayService;
     private HotkeyService? _hotkeyService;
     private CaptureOverlayWindow? _overlayWindow;
@@ -28,6 +30,7 @@ public sealed partial class MainWindow : Window
     private bool _isExiting;
 
     public bool HotkeyRegistered { get; private set; }
+    public HotkeySettings HotkeySettings => _hotkeySettings;
     public bool AutoGraphicRecognition { get; set; }
     public bool StartupRegistered { get; private set; }
     public SaveResult? LastSave { get; private set; }
@@ -52,6 +55,7 @@ public sealed partial class MainWindow : Window
         _trayService.ShowRequested += (_, _) => DispatcherQueue.TryEnqueue(ShowFromBackground);
         _trayService.CaptureRequested += (_, _) => DispatcherQueue.TryEnqueue(StartCapture);
         _trayService.ExitRequested += (_, _) => DispatcherQueue.TryEnqueue(ExitApplication);
+        _hotkeySettings = _hotkeySettingsService.Load();
         RegisterHotkey();
         Closed += MainWindow_Closed;
         UpdateTrayToolTip();
@@ -318,13 +322,46 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    public bool TryUpdateHotkeySettings(HotkeySettings settings, out string error)
+    {
+        if (!settings.TryValidate(out error))
+        {
+            return false;
+        }
+
+        var previousSettings = _hotkeySettings;
+        if (!ApplyHotkeySettings(settings))
+        {
+            _ = ApplyHotkeySettings(previousSettings);
+            error = "新的快捷键无法注册，已恢复之前的设置。";
+            return false;
+        }
+
+        if (_hotkeySettingsService.TrySave(settings, out error))
+        {
+            UpdateTrayToolTip();
+            return true;
+        }
+
+        _ = ApplyHotkeySettings(previousSettings);
+        return false;
+    }
+
     private void RegisterHotkey()
     {
-        _hotkeyService = new HotkeyService(this);
+        _ = ApplyHotkeySettings(_hotkeySettings);
+    }
+
+    private bool ApplyHotkeySettings(HotkeySettings settings)
+    {
+        _hotkeyService?.Dispose();
+        _hotkeySettings = settings;
+        _hotkeyService = new HotkeyService(this, settings);
         HotkeyRegistered = _hotkeyService.Register();
         _hotkeyService.CaptureRequested += (_, _) => DispatcherQueue.TryEnqueue(StartCapture);
         _hotkeyService.AnnotationHotkeyRequested += (_, gesture) =>
             DispatcherQueue.TryEnqueue(() => HandleAnnotationHotkey(gesture));
+        return HotkeyRegistered;
     }
 
     private void HandleAnnotationHotkey(AnnotationHotkeyGestureResult gesture)
