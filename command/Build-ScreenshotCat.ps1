@@ -3,7 +3,7 @@ param(
     [ValidateSet('Validate', 'BuildRelease', 'PackageRelease', 'Clean')]
     [string]$Action = 'Validate',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.3'
+    [string]$Version = '1.0.4'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +16,10 @@ $verification = Join-Path $projectRoot 'ScreenshotCat.Verification\ScreenshotCat
 $installerScript = Join-Path $projectRoot 'installer\ScreenshotCat.iss'
 
 $sdkRoot = Join-Path $workspaceRoot 'sdk'
+$dotnetPath = Join-Path $sdkRoot 'dotnet\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnetPath -PathType Leaf)) {
+    throw "dotnet executable not found: $dotnetPath"
+}
 $env:DOTNET_CLI_HOME = Join-Path $sdkRoot 'dotnet-home'
 $env:NUGET_PACKAGES = Join-Path $sdkRoot 'nuget-packages'
 $env:TEMP = Join-Path $workspaceRoot 'temp'
@@ -24,9 +28,9 @@ New-Item -ItemType Directory -Force -Path $env:DOTNET_CLI_HOME, $env:NUGET_PACKA
 
 function Invoke-Dotnet {
     param([Parameter(Mandatory)][string[]]$Arguments)
-    & dotnet @Arguments
+    & $dotnetPath @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "dotnet failed with exit code ${LASTEXITCODE}: dotnet $($Arguments -join ' ')"
+        throw "dotnet failed with exit code ${LASTEXITCODE}: $dotnetPath $($Arguments -join ' ')"
     }
 }
 function Assert-ReleasePath {
@@ -63,7 +67,13 @@ function Remove-PublishBloat {
         'Microsoft.ML.OnnxRuntime.dll',
         'Microsoft.Windows.AI*.dll',
         'Microsoft.Windows.Widgets*.dll',
+        'Microsoft.Web.WebView2*.dll',
+        'Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll',
+        'Microsoft.Windows.Management.Deployment.Projection.dll',
         'System.Numerics.Tensors.dll',
+        'System.IO.Compression.Native.dll',
+        'WebView2Loader.dll',
+        'msquic.dll',
         '*.pdb',
         'mscordaccore*.dll',
         'mscordbi.dll',
@@ -136,19 +146,15 @@ function Invoke-ReleaseBuild {
 
 function New-ReleaseArchive {
     $archive = Join-Path $releaseRoot "ScreenshotCat-v$Version-win-x64.zip"
-    $checksum = "$archive.sha256"
     Assert-ReleasePath $archive
     if (Test-Path -LiteralPath $archive) {
         Remove-Item -LiteralPath $archive -Force
     }
     Compress-Archive -Path (Join-Path $publishRoot '*') -DestinationPath $archive -CompressionLevel Optimal
-    $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  $(Split-Path -Leaf $archive)" | Set-Content -LiteralPath $checksum -Encoding ascii
     $appBytes = (Get-ChildItem -LiteralPath $publishRoot -Recurse -File | Measure-Object Length -Sum).Sum
     [pscustomobject]@{
         Path = $archive
         Bytes = (Get-Item -LiteralPath $archive).Length
-        SHA256 = $hash
         AppBytes = $appBytes
     }
 }
@@ -159,6 +165,7 @@ function Get-InnoSetupCompiler {
         (Join-Path $sdkRoot 'Inno Setup 7\ISCC.exe'),
         (Join-Path $sdkRoot 'Inno\ISCC.exe'),
         (Join-Path $sdkRoot 'InnoSetup7\ISCC.exe'),
+        (Join-Path $sdkRoot 'inno-setup-6\ISCC.exe'),
         (Join-Path ${env:ProgramFiles} 'Inno Setup 7\ISCC.exe'),
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 7\ISCC.exe'),
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe')
@@ -181,9 +188,8 @@ function New-SetupPackage {
     $compiler = Get-InnoSetupCompiler
     $outputBaseName = "ScreenshotCat-v$Version-win-x64-setup"
     $setup = Join-Path $releaseRoot "$outputBaseName.exe"
-    $checksum = "$setup.sha256"
     Assert-ReleasePath $setup
-    Remove-Item -LiteralPath $setup, $checksum -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
 
     & $compiler `
         "/DAppVersion=$Version" `
@@ -198,12 +204,9 @@ function New-SetupPackage {
         throw "Inno Setup did not create the expected package: $setup"
     }
 
-    $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  $(Split-Path -Leaf $setup)" | Set-Content -LiteralPath $checksum -Encoding ascii
     [pscustomobject]@{
         Path = $setup
         Bytes = (Get-Item -LiteralPath $setup).Length
-        SHA256 = $hash
     }
 }
 

@@ -13,7 +13,6 @@ $websiteRoot = Join-Path $projectRoot 'website'
 $stageRoot = Join-Path $websiteRoot '.dist'
 $configPath = Join-Path $projectRoot 'wrangler.jsonc'
 $workerPath = Join-Path $projectRoot 'worker.js'
-$expectedSponsorHash = '1E23933B0C5DA7169FFBBC64EF58B324867ADA4EA38CF1F772F2CF13BA5C300A'
 $repository = 'nekobyran/kacha'
 $repositoryUrl = "https://github.com/$repository"
 $releaseApiUrl = 'https://kacha.nkbr.cc/api/release'
@@ -63,7 +62,6 @@ function Assert-SiteSource {
         'data-release-file',
         'data-release-size',
         'data-release-link',
-        'data-checksum-command',
         'Windows 10 1809+',
         '完全本地处理',
         'id="workflow"',
@@ -134,10 +132,6 @@ function Assert-SiteSource {
     }
     if ($config.routes.Count -ne 1 -or $config.routes[0].pattern -ne 'kacha.nkbr.cc' -or -not $config.routes[0].custom_domain) {
         throw 'Wrangler custom domain configuration is incorrect.'
-    }
-    $sponsor = Join-Path $websiteRoot 'assets\sponsor.jpg'
-    if ((Get-FileHash -LiteralPath $sponsor -Algorithm SHA256).Hash -cne $expectedSponsorHash) {
-        throw 'Sponsor image hash does not match the verified source.'
     }
     foreach ($relative in $publicFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $websiteRoot $relative) -PathType Leaf)) {

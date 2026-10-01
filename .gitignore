@@ -12,7 +12,6 @@ artifacts/
 release/
 website/.dist/
 *.zip
-*.sha256
 
 # OS / editor files
 .DS_Store

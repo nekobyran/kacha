@@ -321,16 +321,6 @@
                 <dt>系统</dt>
                 <dd>Windows 10 1809 或更高版本</dd>
               </div>
-              <div class="checksum-row">
-                <dt>SHA-256</dt>
-                <dd>
-                  <code data-checksum tabindex="0">读取校验文件…</code>
-                  <button type="button" class="copy-button" data-copy-checksum aria-label="复制 SHA-256 校验值">
-                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 7V4h9v9h-3M4 7h9v9H4z" /></svg>
-                    <span>复制</span>
-                  </button>
-                </dd>
-              </div>
             </dl>
 
             <a
@@ -349,7 +339,7 @@
 
             <p class="signature-note">
               当前版本未进行商业代码签名，首次运行时 Windows 可能显示 SmartScreen 提示。请只从本页或项目
-              Releases 下载，并核对 SHA-256。
+              Releases 下载。
             </p>
           </div>
         </div>
@@ -379,14 +369,7 @@
           </details>
           <details>
             <summary><span>04</span>为什么 Windows 会显示安全提示？</summary>
-            <div><p>当前版本尚未进行商业代码签名。请确认下载来源为本页或 GitHub Releases，并使用页面提供的 SHA-256 校验文件完整性。</p></div>
-          </details>
-          <details>
-            <summary><span>05</span>如何核对 SHA-256？</summary>
-            <div>
-              <p>在 PowerShell 中运行：</p>
-              <code class="command-code" data-checksum-command>Get-FileHash .\&lt;下载文件名&gt; -Algorithm SHA256</code>
-            </div>
+            <div><p>当前版本尚未进行商业代码签名。请确认下载来源为本页或 GitHub Releases。</p></div>
           </details>
         </div>
       </section>

@@ -17,4 +17,4 @@
 - Cloudflare Workers Static Assets：`wrangler.jsonc` → `https://kacha.nkbr.cc/`
 - 开源说明：`README.md`、`LICENSE`、`SECURITY.md`、`CHANGELOG.md`
 - 赞助码：`assets/sponsor.jpg`
-- 发布产物：工作区 `release/ScreenshotCat_Windows/release/`（ZIP、Setup、SHA-256）
+- 发布产物：工作区 `release/ScreenshotCat_Windows/release/`（ZIP、Setup）

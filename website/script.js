@@ -1,9 +1,6 @@
 const RELEASES_FALLBACK = 'https://github.com/nekobyran/kacha/releases';
 
 const year = document.querySelector('[data-year]');
-const checksum = document.querySelector('[data-checksum]');
-const checksumCommand = document.querySelector('[data-checksum-command]');
-const copyButton = document.querySelector('[data-copy-checksum]');
 const toast = document.querySelector('[data-toast]');
 const releaseState = document.querySelector('[data-release-version]');
 const releaseTitle = document.querySelector('[data-release-title]');
@@ -56,16 +53,6 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add('is-visible');
   toastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 2200);
-}
-
-function selectChecksum() {
-  if (!checksum) return;
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.selectNodeContents(checksum);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-  checksum.focus();
 }
 
 function formatBytes(bytes) {
@@ -126,8 +113,6 @@ function applyRelease(release) {
 
   if (releaseFile) releaseFile.textContent = asset.name;
   if (releaseSize) releaseSize.textContent = formatBytes(asset.size);
-  if (checksum) checksum.textContent = release.sha256 || '请下载同版本 .sha256 文件核对';
-  if (checksumCommand) checksumCommand.textContent = `Get-FileHash .\\${asset.name} -Algorithm SHA256`;
 
   downloadLinks.forEach((link, index) => {
     link.href = asset.downloadUrl;
@@ -146,7 +131,6 @@ function applyReleaseFallback() {
   if (releaseDate) releaseDate.textContent = '实时状态不可用';
   if (releaseFile) releaseFile.textContent = '请在 Releases 页面选择 Windows x64 Setup';
   if (releaseSize) releaseSize.textContent = '以 GitHub 显示为准';
-  if (checksum) checksum.textContent = '请使用 Release 附带的 .sha256 文件';
   downloadLinks.forEach((link) => {
     link.href = RELEASES_FALLBACK;
     const strong = link.querySelector('strong');
@@ -169,29 +153,6 @@ async function loadLatestRelease() {
     applyReleaseFallback();
   }
 }
-
-copyButton?.addEventListener('click', async () => {
-  const value = checksum?.textContent?.trim();
-  if (!value || !/^[a-f0-9]{64}$/i.test(value)) {
-    showToast('当前没有可复制的 SHA-256');
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(value);
-    copyButton.classList.add('is-copied');
-    const label = copyButton.querySelector('span');
-    if (label) label.textContent = '已复制';
-    showToast('SHA-256 已复制');
-    window.setTimeout(() => {
-      copyButton.classList.remove('is-copied');
-      if (label) label.textContent = '复制';
-    }, 1800);
-  } catch {
-    selectChecksum();
-    showToast('校验值已选中，请手动复制');
-  }
-});
 
 downloadLinks.forEach((link) => {
   link.addEventListener('click', () => showToast('正在前往 GitHub Releases…'));

@@ -79,24 +79,6 @@ async function buildLatestReleaseResponse() {
   const setupAsset = assets.find((item) => /^ScreenshotCat-.*-win-x64-setup\.exe$/i.test(item?.name || ''));
   const portableAsset = assets.find((item) => /^ScreenshotCat-.*-win-x64\.zip$/i.test(item?.name || ''));
   const asset = setupAsset || portableAsset;
-  const checksumAsset = asset
-    ? assets.find((item) => item?.name === `${asset.name}.sha256`)
-    : null;
-
-  let sha256 = null;
-  if (checksumAsset?.browser_download_url) {
-    try {
-      const checksumResponse = await githubFetch(checksumAsset.browser_download_url, {
-        Accept: 'application/octet-stream',
-      });
-      if (checksumResponse.ok) {
-        const checksumText = (await checksumResponse.text()).slice(0, 4096);
-        sha256 = checksumText.match(/\b[a-f0-9]{64}\b/i)?.[0]?.toLowerCase() || null;
-      }
-    } catch {
-      sha256 = null;
-    }
-  }
 
   if (!asset?.browser_download_url) {
     return jsonResponse(fallbackPayload('WINDOWS_X64_ASSET_NOT_FOUND'), 404);
@@ -119,10 +101,6 @@ async function buildLatestReleaseResponse() {
       downloadUrl: String(asset.browser_download_url).slice(0, 1024),
       contentType: String(asset.content_type || 'application/octet-stream').slice(0, 128),
     },
-    checksumAssetUrl: checksumAsset?.browser_download_url
-      ? String(checksumAsset.browser_download_url).slice(0, 1024)
-      : null,
-    sha256,
   });
 }
 

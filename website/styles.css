@@ -1120,55 +1120,6 @@ kbd {
   overflow-wrap: anywhere;
 }
 
-.checksum-row dd {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding-block: 12px;
-}
-
-.checksum-row code {
-  min-width: 0;
-  color: #e6e9ec;
-  font: 650 9px/1.6 var(--font-mono);
-  overflow-wrap: anywhere;
-}
-
-.copy-button {
-  min-width: 76px;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 0 10px;
-  border: 1.5px solid rgba(255, 255, 255, 0.7);
-  background: transparent;
-  color: white;
-  font-size: 11px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: color 160ms ease, background 160ms ease;
-}
-
-.copy-button:hover,
-.copy-button.is-copied {
-  border-color: var(--lime);
-  background: var(--lime);
-  color: var(--ink);
-}
-
-.copy-button svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .button-download {
   margin: 18px;
   background: var(--red);
@@ -1837,14 +1788,6 @@ kbd {
     grid-template-columns: 1fr;
     gap: 7px;
     padding-block: 12px;
-  }
-
-  .checksum-row dd {
-    grid-template-columns: 1fr;
-  }
-
-  .copy-button {
-    justify-self: start;
   }
 
   .button-download {

@@ -7,6 +7,7 @@ public sealed class StartupService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "ScreenshotCat";
+    public const string StartupArgument = "--startup";
 
     public bool EnableForCurrentExecutable()
     {
@@ -23,7 +24,7 @@ public sealed class StartupService
             return false;
         }
 
-        key.SetValue(RunValueName, $"\"{executablePath}\"", RegistryValueKind.String);
+        key.SetValue(RunValueName, $"\"{executablePath}\" {StartupArgument}", RegistryValueKind.String);
         return true;
     }
 
