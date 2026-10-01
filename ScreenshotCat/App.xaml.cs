@@ -58,8 +58,6 @@ public partial class App : Application
             return;
         }
 
-        var startupLaunch = Environment.GetCommandLineArgs()
-            .Any(value => string.Equals(value, StartupService.StartupArgument, StringComparison.OrdinalIgnoreCase));
         MainWindow = new MainWindow();
 #if DEBUG
         var debugTarget = Environment.GetCommandLineArgs()
@@ -80,11 +78,6 @@ public partial class App : Application
             return;
         }
 #endif
-        if (startupLaunch)
-        {
-            return;
-        }
-
         MainWindow.Activate();
     }
 }
