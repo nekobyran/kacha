@@ -111,6 +111,10 @@ public sealed partial class MainWindow : Window
         {
             _annotationUiVisibilityState.ShowToolbar(targetHwnd);
         }
+        else
+        {
+            _annotationUiVisibilityState.HideToolbar(targetHwnd);
+        }
 
         var sessionId = Guid.NewGuid();
         _activeAnnotationTargetHwnd = targetHwnd;

@@ -69,6 +69,15 @@ public partial class App : Application
             return;
         }
 
+        var debugHiddenTarget = Environment.GetCommandLineArgs()
+            .FirstOrDefault(value => value.StartsWith("--debug-annotation-hidden=", StringComparison.OrdinalIgnoreCase))?
+            .Split('=', 2)[1];
+        if (nint.TryParse(debugHiddenTarget, out targetHwnd) && targetHwnd != 0)
+        {
+            MainWindow.StartDirectAnnotationForWindow(targetHwnd, showToolbar: false);
+            return;
+        }
+
         var debugToolbarTarget = Environment.GetCommandLineArgs()
             .FirstOrDefault(value => value.StartsWith("--debug-toolbar=", StringComparison.OrdinalIgnoreCase))?
             .Split('=', 2)[1];
