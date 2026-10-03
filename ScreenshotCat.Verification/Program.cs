@@ -16,6 +16,7 @@ try
         VerifyAnnotationSession(root, "dpi-120", 800, 640, 1000, 800),
         VerifySecondaryOrigin(root),
         VerifyAnnotationHotkeyGesture(),
+        VerifyAnnotationUiVisibility(),
         VerifyHotkeySettings(root)
     };
     Console.WriteLine(JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
@@ -55,6 +56,49 @@ static object VerifyAnnotationHotkeyGesture()
         LongPressMilliseconds = AnnotationHotkeyGesture.LongPressMilliseconds,
         LongPress = "hide-toolbar",
         Tab = "pause-resume",
+        Passed = true
+    };
+}
+
+static object VerifyAnnotationUiVisibility()
+{
+    var state = new AnnotationUiVisibilityState();
+    var target = new nint(5151);
+    var otherTarget = new nint(5152);
+
+    if (state.IsToolbarHidden(target) || !state.SessionToolbarVisibleOnStart(target))
+    {
+        throw new InvalidOperationException("annotation toolbar should start visible.");
+    }
+
+    state.HideToolbar(target);
+    if (!state.IsToolbarHidden(target))
+    {
+        throw new InvalidOperationException("hidden annotation toolbar should stay hidden for the target.");
+    }
+    if (state.SessionToolbarVisibleOnStart(target))
+    {
+        throw new InvalidOperationException(
+            "a hidden target must still start annotation, with the session toolbar hidden.");
+    }
+    if (state.IsToolbarHidden(otherTarget) || !state.SessionToolbarVisibleOnStart(otherTarget))
+    {
+        throw new InvalidOperationException("hiding the toolbar must stay scoped to its target window.");
+    }
+
+    state.ShowToolbar(target);
+    if (state.IsToolbarHidden(target) || !state.SessionToolbarVisibleOnStart(target))
+    {
+        throw new InvalidOperationException("explicit annotation should allow the toolbar again.");
+    }
+
+    return new
+    {
+        Case = "annotation-ui-visibility",
+        HiddenTargetsKeepToolbarHidden = true,
+        HiddenTargetsStillStartAnnotation = true,
+        HiddenStateIsScopedToTarget = true,
+        ExplicitAnnotationRestoresToolbar = true,
         Passed = true
     };
 }

@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window
     private readonly StartupService _startupService = new();
     private readonly HotkeySettingsService _hotkeySettingsService = new();
     private readonly PersistentWindowService _persistentWindowService = new();
+    private readonly AnnotationUiVisibilityState _annotationUiVisibilityState = new();
     private readonly DispatcherTimer _persistentWindowRestoreTimer = new();
     private HotkeySettings _hotkeySettings = HotkeySettings.Default;
     private readonly TrayService _trayService;
@@ -99,11 +100,16 @@ public sealed partial class MainWindow : Window
         _overlayWindow.Activate();
     }
 
-    public void StartDirectAnnotationForWindow(nint targetHwnd)
+    public void StartDirectAnnotationForWindow(nint targetHwnd, bool showToolbar = true)
     {
         if (targetHwnd == 0 || !NativeMethods.GetWindowRect(targetHwnd, out _))
         {
             return;
+        }
+
+        if (showToolbar)
+        {
+            _annotationUiVisibilityState.ShowToolbar(targetHwnd);
         }
 
         var sessionId = Guid.NewGuid();
@@ -172,6 +178,7 @@ public sealed partial class MainWindow : Window
 
             if (ownsActiveSession
                 && returnToPersistentToolbar
+                && !_annotationUiVisibilityState.IsToolbarHidden(targetHwnd)
                 && NativeMethods.IsWindowVisible(targetHwnd))
             {
                 DispatcherQueue.TryEnqueue(() => ShowAttachedToolbar(targetHwnd));
@@ -183,7 +190,7 @@ public sealed partial class MainWindow : Window
             _hotkeyService.AnnotationModeActive = true;
         }
         sessionToolbar.SetCommentCount(annotationWindow.CommentCount);
-        sessionToolbar.StartFollowing();
+        sessionToolbar.StartFollowing(startHidden: !_annotationUiVisibilityState.SessionToolbarVisibleOnStart(targetHwnd));
     }
 
 #if DEBUG
@@ -275,6 +282,16 @@ public sealed partial class MainWindow : Window
         if (targetHwnd == 0 || !NativeMethods.IsWindowVisible(targetHwnd))
         {
             return;
+        }
+
+        if (!remember && _annotationUiVisibilityState.IsToolbarHidden(targetHwnd))
+        {
+            return;
+        }
+
+        if (remember)
+        {
+            _annotationUiVisibilityState.ShowToolbar(targetHwnd);
         }
 
         if (targetHwnd == _activeAnnotationTargetHwnd)
@@ -381,7 +398,9 @@ public sealed partial class MainWindow : Window
                 var toggleTarget = ResolveAnnotationTarget(gesture.TargetHwnd);
                 if (toggleTarget != 0)
                 {
-                    StartDirectAnnotationForWindow(toggleTarget);
+                    StartDirectAnnotationForWindow(
+                        toggleTarget,
+                        showToolbar: _annotationUiVisibilityState.SessionToolbarVisibleOnStart(toggleTarget));
                 }
                 break;
             case AnnotationHotkeyAction.HideToolbar:
@@ -415,6 +434,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        _annotationUiVisibilityState.HideToolbar(targetHwnd);
         _persistentWindowService.Forget(targetHwnd);
         if (_attachedToolbarWindows.Remove(targetHwnd, out var toolbar))
         {
@@ -423,7 +443,8 @@ public sealed partial class MainWindow : Window
 
         if (targetHwnd == _activeAnnotationTargetHwnd)
         {
-            _annotationOverlayWindow?.RequestExitAnnotationMode(returnToPersistentToolbar: false);
+            // Hiding keeps the running annotation session alive, only the session toolbar goes away.
+            _annotationSessionToolbarWindow?.HideToolbar();
         }
     }
 

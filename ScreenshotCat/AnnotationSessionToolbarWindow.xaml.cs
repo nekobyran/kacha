@@ -35,6 +35,7 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
     private int _lastToolbarHeight;
     private bool _isShown;
     private bool _isPaused;
+    private bool _toolbarHidden;
     private int _commentCount;
 
     public AnnotationSessionToolbarWindow(
@@ -64,8 +65,9 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         _followTimer.Tick += (_, _) => FollowTarget();
     }
 
-    public void StartFollowing()
+    public void StartFollowing(bool startHidden = false)
     {
+        _toolbarHidden = startHidden;
         if (!FollowTarget())
         {
             return;
@@ -161,11 +163,18 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
             return false;
         }
 
+        // Hidden toolbar stays hidden, no matter how the pause state or the target changes.
+        if (_toolbarHidden)
+        {
+            HideToolbarWindow();
+            return true;
+        }
+
         if (!NativeMethods.IsWindowVisible(_targetHwnd)
             || NativeMethods.IsIconic(_targetHwnd)
             || !NativeMethods.GetWindowRect(_targetHwnd, out var rect))
         {
-            HideToolbar();
+            HideToolbarWindow();
             return true;
         }
 
@@ -187,7 +196,7 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
             && foreground != _annotationHwnd
             && foregroundRoot != _annotationHwnd)
         {
-            HideToolbar();
+            HideToolbarWindow();
             return true;
         }
 
@@ -206,7 +215,7 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         var toolbarWidth = Math.Max(0, Math.Min(rect.Right, monitorRight) - toolbarX);
         if (toolbarWidth < 240)
         {
-            HideToolbar();
+            HideToolbarWindow();
             return true;
         }
 
@@ -249,7 +258,14 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         return true;
     }
 
-    private void HideToolbar()
+    /// <summary>Hides the toolbar on user request and keeps it hidden while the session runs.</summary>
+    public void HideToolbar()
+    {
+        _toolbarHidden = true;
+        HideToolbarWindow();
+    }
+
+    private void HideToolbarWindow()
     {
         if (!_isShown)
         {

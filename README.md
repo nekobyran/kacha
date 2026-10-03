@@ -10,7 +10,7 @@
 - 支持多显示器与不同 DPI 缩放
 - 保存后自动复制到剪贴板，便于直接粘贴分享
 - 托盘常驻、安装后默认开机自启，并可对目标窗口持续批注
-- `Ctrl + Tab` 短按切换聚焦窗口的批注模式，长按隐藏对应批注栏
+- `Ctrl + Tab` 短按切换聚焦窗口的批注模式，长按隐藏对应批注栏；隐藏后仍可批注，但批注栏不会自动出现
 - 批注模式中按 `Tab` 暂停或继续；退出时自动保存已有批注
 - 截图默认保存到 `图片\ScreenshotCat`
 
@@ -28,7 +28,7 @@
 
 ```powershell
 pwsh -File .\command\Build-ScreenshotCat.ps1 -Action Validate
-pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.7
+pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.8
 ```
 
 本项目只执行 Release 验证和构建，不生成 Debug 版本。`PackageRelease` 会执行 Release 验证、partial IL 裁剪、剥离调试/诊断文件及非运行必需组件，并同时输出 ZIP 与 Setup。SDK 缓存、临时文件和 NuGet 包位于 `D:\vibecoding\sdk`，发布包输出到工作区 `release/ScreenshotCat_Windows/release/`。
