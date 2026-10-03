@@ -250,6 +250,7 @@ internal static partial class NativeMethods
     internal const uint WmLButtonDblClk = 0x0203;
     internal const uint WmRButtonUp = 0x0205;
     internal const uint WmContextMenu = 0x007B;
+    internal const uint WmTimer = 0x0113;
 
     internal const uint NimAdd = 0x00000000;
     internal const uint NimModify = 0x00000001;
@@ -265,7 +266,6 @@ internal static partial class NativeMethods
     internal const uint ImageIcon = 1;
     internal const uint LrLoadFromFile = 0x00000010;
     internal const uint LrDefaultSize = 0x00000040;
-    internal const int HwndMessage = -3;
 
     internal delegate nint WndProc(nint hWnd, uint msg, nuint wParam, nint lParam);
 
@@ -315,8 +315,18 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
     internal static partial nint DefWindowProc(nint hWnd, uint msg, nuint wParam, nint lParam);
 
+    [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial uint RegisterWindowMessage(string lpString);
+
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial nint GetModuleHandle(string? lpModuleName);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetTimer")]
+    internal static partial nuint SetTimer(nint hWnd, nuint nIDEvent, uint uElapse, nint lpTimerFunc);
+
+    [LibraryImport("user32.dll", EntryPoint = "KillTimer")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool KillTimer(nint hWnd, nuint uIDEvent);
 
     [LibraryImport("user32.dll")]
     internal static partial nint CreatePopupMenu();
@@ -355,7 +365,7 @@ internal static partial class NativeMethods
         return atom;
     }
 
-    internal static nint CreateMessageWindow(ushort classAtom, string windowName)
+    internal static nint CreateHiddenWindow(ushort classAtom, string windowName)
     {
         return CreateWindowEx(
             0,
@@ -366,7 +376,7 @@ internal static partial class NativeMethods
             0,
             0,
             0,
-            new nint(HwndMessage),
+            0,
             0,
             GetModuleHandle(null),
             0);

@@ -10,12 +10,18 @@ public sealed class TrayService : IDisposable
     private const uint CmdShow = 1001;
     private const uint CmdCapture = 1002;
     private const uint CmdExit = 1003;
+    private const nuint RetryTimerId = 1;
+    private const uint RetryIntervalMilliseconds = 2_000;
+    private const int MaxRetryAttempts = 30;
 
     private readonly NativeMethods.WndProc _wndProc;
     private readonly nint _hwnd;
     private readonly nint _iconHandle;
     private readonly ushort _classAtom;
+    private readonly uint _taskbarCreatedMessage;
     private bool _visible;
+    private bool _retryTimerActive;
+    private int _retryAttempts;
     private bool _disposed;
 
     public event EventHandler? ShowRequested;
@@ -25,16 +31,16 @@ public sealed class TrayService : IDisposable
     public TrayService(string iconPath)
     {
         _wndProc = WndProc;
+        _taskbarCreatedMessage = NativeMethods.RegisterWindowMessage("TaskbarCreated");
         _classAtom = NativeMethods.RegisterWindowClass("ScreenshotCatTrayWindow", _wndProc);
-        _hwnd = NativeMethods.CreateMessageWindow(_classAtom, "ScreenshotCatTray");
+        _hwnd = NativeMethods.CreateHiddenWindow(_classAtom, "ScreenshotCatTray");
         if (_hwnd == 0)
         {
             throw new InvalidOperationException("Failed to create tray message window.");
         }
 
         _iconHandle = NativeMethods.LoadIconFromFile(iconPath);
-        AddOrModifyIcon(add: true);
-        _visible = true;
+        EnsureIcon();
     }
 
     public void Dispose()
@@ -45,6 +51,7 @@ public sealed class TrayService : IDisposable
         }
 
         _disposed = true;
+        StopRetryTimer();
         if (_visible)
         {
             var data = CreateNotifyIconData(includeMessage: false);
@@ -70,7 +77,7 @@ public sealed class TrayService : IDisposable
 
     public void SetToolTip(string text)
     {
-        if (_disposed || string.IsNullOrWhiteSpace(text))
+        if (_disposed || !_visible || string.IsNullOrWhiteSpace(text))
         {
             return;
         }
@@ -79,14 +86,56 @@ public sealed class TrayService : IDisposable
         _ = NativeMethods.Shell_NotifyIcon(NativeMethods.NimModify, ref data);
     }
 
-    private void AddOrModifyIcon(bool add)
+    private bool EnsureIcon()
     {
-        var data = CreateNotifyIconData(includeMessage: true, tip: "ScreenshotCat");
-        var message = add ? NativeMethods.NimAdd : NativeMethods.NimModify;
-        if (!NativeMethods.Shell_NotifyIcon(message, ref data) && add)
+        if (_visible)
         {
-            throw new InvalidOperationException("Failed to create tray icon.");
+            var modifyData = CreateNotifyIconData(includeMessage: true, tip: "ScreenshotCat");
+            if (NativeMethods.Shell_NotifyIcon(NativeMethods.NimModify, ref modifyData))
+            {
+                return true;
+            }
+
+            _visible = false;
         }
+
+        var data = CreateNotifyIconData(includeMessage: true, tip: "ScreenshotCat");
+        if (NativeMethods.Shell_NotifyIcon(NativeMethods.NimAdd, ref data))
+        {
+            _visible = true;
+            _retryAttempts = 0;
+            StopRetryTimer();
+            return true;
+        }
+
+        ScheduleRetry();
+        return false;
+    }
+
+    private void ScheduleRetry()
+    {
+        if (_disposed || _retryTimerActive || _retryAttempts >= MaxRetryAttempts)
+        {
+            return;
+        }
+
+        _retryAttempts++;
+        _retryTimerActive = NativeMethods.SetTimer(
+            _hwnd,
+            RetryTimerId,
+            RetryIntervalMilliseconds,
+            0) != 0;
+    }
+
+    private void StopRetryTimer()
+    {
+        if (!_retryTimerActive)
+        {
+            return;
+        }
+
+        _ = NativeMethods.KillTimer(_hwnd, RetryTimerId);
+        _retryTimerActive = false;
     }
 
     private NativeMethods.NOTIFYICONDATA CreateNotifyIconData(bool includeMessage, string? tip = null)
@@ -105,6 +154,23 @@ public sealed class TrayService : IDisposable
 
     private nint WndProc(nint hWnd, uint msg, nuint wParam, nint lParam)
     {
+        if (msg == _taskbarCreatedMessage && _taskbarCreatedMessage != 0)
+        {
+            _visible = false;
+            _retryAttempts = 0;
+            StopRetryTimer();
+            EnsureIcon();
+            return 0;
+        }
+
+        if (msg == NativeMethods.WmTimer && wParam == RetryTimerId)
+        {
+            _retryTimerActive = false;
+            _ = NativeMethods.KillTimer(_hwnd, RetryTimerId);
+            EnsureIcon();
+            return 0;
+        }
+
         if (msg == WmTrayIcon && wParam == TrayIconId)
         {
             var mouseMsg = (uint)lParam & 0xFFFF;

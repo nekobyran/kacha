@@ -28,7 +28,7 @@
 
 ```powershell
 pwsh -File .\command\Build-ScreenshotCat.ps1 -Action Validate
-pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.6
+pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.7
 ```
 
 本项目只执行 Release 验证和构建，不生成 Debug 版本。`PackageRelease` 会执行 Release 验证、partial IL 裁剪、剥离调试/诊断文件及非运行必需组件，并同时输出 ZIP 与 Setup。SDK 缓存、临时文件和 NuGet 包位于 `D:\vibecoding\sdk`，发布包输出到工作区 `release/ScreenshotCat_Windows/release/`。
