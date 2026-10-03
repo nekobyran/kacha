@@ -20,7 +20,7 @@
 2. 运行 Setup，按向导完成当前用户安装。
 3. 也可下载同版本 ZIP，解压后直接运行 `ScreenshotCat.exe`。
 
-当前 Release 面向 Windows 10 1809（版本 17763）及以上的 64 位系统，并自带裁剪后的 .NET 运行时。为控制体积，包内不重复携带完整 Windows App Runtime；运行前需安装匹配的 [Windows App Runtime](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)（Windows 11 多数环境已预装）。程序暂未进行商业代码签名，首次运行时 Windows 可能显示安全提示；请只从本仓库 Releases 下载。
+当前 Release 面向 Windows 10 1809（版本 17763）及以上的 64 位系统，并自带裁剪后的 .NET 运行时。Setup 会在安装时自动修复或部署匹配的 Windows App Runtime；ZIP 版仍要求系统已安装匹配的 [Windows App Runtime](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)。如果系统拒绝写入当前用户启动项，程序仍会正常启动，只是不会自动加入开机启动。程序暂未进行商业代码签名，首次运行时 Windows 可能显示安全提示；请只从本仓库 Releases 下载。
 
 ## 从源码构建
 
@@ -28,7 +28,7 @@
 
 ```powershell
 pwsh -File .\command\Build-ScreenshotCat.ps1 -Action Validate
-pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.5
+pwsh -File .\command\Build-ScreenshotCat.ps1 -Action PackageRelease -Version 1.0.6
 ```
 
 本项目只执行 Release 验证和构建，不生成 Debug 版本。`PackageRelease` 会执行 Release 验证、partial IL 裁剪、剥离调试/诊断文件及非运行必需组件，并同时输出 ZIP 与 Setup。SDK 缓存、临时文件和 NuGet 包位于 `D:\vibecoding\sdk`，发布包输出到工作区 `release/ScreenshotCat_Windows/release/`。

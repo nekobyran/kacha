@@ -3,7 +3,7 @@ param(
     [ValidateSet('Validate', 'BuildRelease', 'PackageRelease', 'Clean')]
     [string]$Action = 'Validate',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.5'
+    [string]$Version = '1.0.6'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,6 +14,8 @@ $publishRoot = Join-Path $releaseRoot "App-v$Version"
 $project = Join-Path $projectRoot 'ScreenshotCat\ScreenshotCat.csproj'
 $verification = Join-Path $projectRoot 'ScreenshotCat.Verification\ScreenshotCat.Verification.csproj'
 $installerScript = Join-Path $projectRoot 'installer\ScreenshotCat.iss'
+$windowsAppRuntimeVersion = '1.8.260921001'
+$windowsAppRuntimeInstallerUrl = "https://aka.ms/windowsappsdk/1.8/$windowsAppRuntimeVersion/windowsappruntimeinstall-x64.exe"
 
 $sdkRoot = Join-Path $workspaceRoot 'sdk'
 $dotnetPath = Join-Path $sdkRoot 'dotnet\dotnet.exe'
@@ -101,7 +103,8 @@ function Invoke-Validation {
         'run', '--project', $verification,
         '--configuration', 'Release',
         '--runtime', 'win-x64',
-        "-p:Version=$Version"
+        "-p:Version=$Version",
+        '-p:WindowsAppSdkBootstrapInitialize=false'
     )
 }
 
@@ -180,12 +183,25 @@ function Get-InnoSetupCompiler {
     return [IO.Path]::GetFullPath($compiler)
 }
 
+function Get-WindowsAppRuntimeInstaller {
+    $installer = Join-Path $sdkRoot "downloads\windowsappruntimeinstall-$windowsAppRuntimeVersion-x64.exe"
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installer) | Out-Null
+        Invoke-WebRequest -Uri $windowsAppRuntimeInstallerUrl -OutFile $installer -UseBasicParsing
+    }
+    if ((Get-Item -LiteralPath $installer).Length -le 0) {
+        throw "Windows App Runtime installer is empty: $installer"
+    }
+    return [IO.Path]::GetFullPath($installer)
+}
+
 function New-SetupPackage {
     if (-not (Test-Path -LiteralPath $installerScript -PathType Leaf)) {
         throw "Installer script not found: $installerScript"
     }
 
     $compiler = Get-InnoSetupCompiler
+    $runtimeInstaller = Get-WindowsAppRuntimeInstaller
     $outputBaseName = "ScreenshotCat-v$Version-win-x64-setup"
     $setup = Join-Path $releaseRoot "$outputBaseName.exe"
     Assert-ReleasePath $setup
@@ -194,6 +210,7 @@ function New-SetupPackage {
     & $compiler `
         "/DAppVersion=$Version" `
         "/DSourceDir=$publishRoot" `
+        "/DRuntimeInstaller=$runtimeInstaller" `
         "/DOutputDir=$releaseRoot" `
         "/DOutputBaseFilename=$outputBaseName" `
         $installerScript | Out-Host

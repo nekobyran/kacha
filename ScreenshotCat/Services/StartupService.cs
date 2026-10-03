@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Security;
 using System.Reflection;
 
 namespace ScreenshotCat.Services;
@@ -17,15 +18,26 @@ public sealed class StartupService
             return false;
         }
 
-        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true)
-            ?? Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
-        if (key is null)
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true)
+                ?? Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
+            if (key is null)
+            {
+                return false;
+            }
+
+            key.SetValue(RunValueName, $"\"{executablePath}\" {StartupArgument}", RegistryValueKind.String);
+            return true;
+        }
+        catch (SecurityException)
         {
             return false;
         }
-
-        key.SetValue(RunValueName, $"\"{executablePath}\" {StartupArgument}", RegistryValueKind.String);
-        return true;
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static string? ResolveStartupExecutablePath()

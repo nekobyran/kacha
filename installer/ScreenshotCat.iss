@@ -10,6 +10,9 @@
 #ifndef OutputBaseFilename
   #error OutputBaseFilename must be provided by Build-ScreenshotCat.ps1
 #endif
+#ifndef RuntimeInstaller
+  #error RuntimeInstaller must be provided by Build-ScreenshotCat.ps1
+#endif
 
 [Setup]
 AppId={{E6B25591-1727-4AC6-BA8D-94C8B6A40D32}
@@ -51,6 +54,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#RuntimeInstaller}"; DestDir: "{tmp}\ScreenshotCatRuntime"; DestName: "WindowsAppRuntimeInstall-x64.exe"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\ScreenshotCat"; Filename: "{app}\ScreenshotCat.exe"
@@ -58,3 +62,22 @@ Name: "{autodesktop}\ScreenshotCat"; Filename: "{app}\ScreenshotCat.exe"; Tasks:
 
 [Run]
 Filename: "{app}\ScreenshotCat.exe"; Description: "{cm:LaunchProgram,ScreenshotCat}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure InstallWindowsAppRuntime();
+var
+  InstallerPath: string;
+  ResultCode: Integer;
+begin
+  InstallerPath := ExpandConstant('{tmp}\ScreenshotCatRuntime\WindowsAppRuntimeInstall-x64.exe');
+  if not Exec(InstallerPath, '--repair --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    RaiseException('Unable to start the Windows App Runtime installer.');
+  if (ResultCode <> 0) and (ResultCode <> 3010) then
+    RaiseException(Format('Windows App Runtime repair failed with exit code %d.', [ResultCode]));
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    InstallWindowsAppRuntime();
+end;
