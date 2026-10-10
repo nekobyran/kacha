@@ -407,8 +407,14 @@ public sealed partial class MainWindow : Window
                         showToolbar: _annotationUiVisibilityState.SessionToolbarVisibleOnStart(toggleTarget));
                 }
                 break;
-            case AnnotationHotkeyAction.HideToolbar:
-                HideAnnotationUiForWindow(ResolveAnnotationTarget(gesture.TargetHwnd));
+            case AnnotationHotkeyAction.ToggleToolbar:
+                ToggleAnnotationToolbar(ResolveAnnotationTarget(gesture.TargetHwnd));
+                break;
+            case AnnotationHotkeyAction.CancelAnnotation:
+                CancelAnnotationSession(ResolveAnnotationTarget(gesture.TargetHwnd));
+                break;
+            case AnnotationHotkeyAction.ExitAnnotation:
+                _annotationOverlayWindow?.RequestExitAnnotationMode();
                 break;
         }
     }
@@ -429,6 +435,46 @@ public sealed partial class MainWindow : Window
         return processId != 0 && !ProcessIdentityService.IsCurrentApplicationProcess(processId)
             ? foregroundHwnd
             : 0;
+    }
+
+    private void ToggleAnnotationToolbar(nint targetHwnd)
+    {
+        if (targetHwnd == 0)
+        {
+            return;
+        }
+
+        if (_annotationUiVisibilityState.IsToolbarHidden(targetHwnd))
+        {
+            ShowAnnotationToolbarForWindow(targetHwnd);
+        }
+        else
+        {
+            HideAnnotationUiForWindow(targetHwnd);
+        }
+    }
+
+    private void ShowAnnotationToolbarForWindow(nint targetHwnd)
+    {
+        _annotationUiVisibilityState.ShowToolbar(targetHwnd);
+        if (targetHwnd == _activeAnnotationTargetHwnd && _annotationSessionToolbarWindow is not null)
+        {
+            _annotationSessionToolbarWindow.ShowToolbar();
+            return;
+        }
+
+        ShowAttachedToolbar(targetHwnd);
+    }
+
+    private void CancelAnnotationSession(nint targetHwnd)
+    {
+        if (targetHwnd == 0 || targetHwnd != _activeAnnotationTargetHwnd)
+        {
+            return;
+        }
+
+        _persistentWindowService.Forget(targetHwnd);
+        _annotationOverlayWindow?.RequestExitAnnotationMode(returnToPersistentToolbar: false);
     }
 
     private void HideAnnotationUiForWindow(nint targetHwnd)

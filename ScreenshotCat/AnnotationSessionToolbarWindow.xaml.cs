@@ -265,6 +265,13 @@ public sealed partial class AnnotationSessionToolbarWindow : Window
         HideToolbarWindow();
     }
 
+    /// <summary>Shows the toolbar again after the user asked to hide it.</summary>
+    public void ShowToolbar()
+    {
+        _toolbarHidden = false;
+        FollowTarget();
+    }
+
     private void HideToolbarWindow()
     {
         if (!_isShown)

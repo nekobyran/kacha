@@ -16,6 +16,7 @@ public sealed class HotkeyService : IDisposable
     private readonly object _annotationGestureLock = new();
     private nint _keyboardHook;
     private Timer? _ctrlTabLongPressTimer;
+    private Timer? _escapeLongPressTimer;
     private long _lastHookTriggerTicks;
     private bool _primaryRegistered;
     private bool _secondaryRegistered;
@@ -78,6 +79,12 @@ public sealed class HotkeyService : IDisposable
             var data = System.Runtime.InteropServices.Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
             var isKeyDown = wParam == NativeMethods.WmKeyDown || wParam == NativeMethods.WmSysKeyDown;
             var isKeyUp = wParam == NativeMethods.WmKeyUp || wParam == NativeMethods.WmSysKeyUp;
+            if (_annotationModeActive && data.vkCode == NativeMethods.VkEscape)
+            {
+                // Holding Esc cancels the annotation session; the key itself is never swallowed.
+                DispatchAnnotationGesture(HandleEscapeKey(isKeyDown));
+            }
+
             if (data.vkCode == NativeMethods.VkTab && (isKeyDown || isKeyUp))
             {
                 var result = HandleTabKey(isKeyDown);
@@ -143,6 +150,39 @@ public sealed class HotkeyService : IDisposable
         }
     }
 
+    private AnnotationHotkeyGestureResult HandleEscapeKey(bool isKeyDown)
+    {
+        lock (_annotationGestureLock)
+        {
+            if (!isKeyDown)
+            {
+                StopEscapeTimer();
+                return _annotationGesture.OnEscapeUp(Environment.TickCount64);
+            }
+
+            var foreground = NativeMethods.GetForegroundWindow();
+            var target = NativeMethods.GetAncestor(foreground, NativeMethods.GaRoot);
+            var result = _annotationGesture.OnEscapeDown(target, Environment.TickCount64);
+            _escapeLongPressTimer ??= new Timer(
+                _ => HandleEscapeLongPress(),
+                null,
+                AnnotationHotkeyGesture.LongPressMilliseconds,
+                Timeout.Infinite);
+            return result;
+        }
+    }
+
+    private void HandleEscapeLongPress()
+    {
+        AnnotationHotkeyGestureResult result;
+        lock (_annotationGestureLock)
+        {
+            result = _annotationGesture.OnEscapeLongPress(Environment.TickCount64);
+        }
+
+        DispatchAnnotationGesture(result);
+    }
+
     private void HandleCtrlTabLongPress()
     {
         AnnotationHotkeyGestureResult result;
@@ -188,11 +228,18 @@ public sealed class HotkeyService : IDisposable
         _ctrlTabLongPressTimer = null;
     }
 
+    private void StopEscapeTimer()
+    {
+        _escapeLongPressTimer?.Dispose();
+        _escapeLongPressTimer = null;
+    }
+
     public void Dispose()
     {
         lock (_annotationGestureLock)
         {
             StopCtrlTabTimer();
+            StopEscapeTimer();
         }
 
         if (_primaryRegistered)

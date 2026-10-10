@@ -38,9 +38,17 @@ static object VerifyAnnotationHotkeyGesture()
     AssertGesture(
         gesture.OnCtrlTabLongPress(2_000 + AnnotationHotkeyGesture.LongPressMilliseconds),
         true,
-        AnnotationHotkeyAction.HideToolbar,
+        AnnotationHotkeyAction.ToggleToolbar,
         "long threshold");
     AssertGesture(gesture.OnCtrlTabUp(2_900), true, AnnotationHotkeyAction.None, "long up");
+
+    AssertGesture(gesture.OnCtrlTabDown(target, 3_000), true, AnnotationHotkeyAction.None, "second long down");
+    AssertGesture(
+        gesture.OnCtrlTabLongPress(3_000 + AnnotationHotkeyGesture.LongPressMilliseconds),
+        true,
+        AnnotationHotkeyAction.ToggleToolbar,
+        "second long threshold");
+    AssertGesture(gesture.OnCtrlTabUp(3_900), true, AnnotationHotkeyAction.None, "second long up");
 
     AssertGesture(gesture.OnPlainTabDown(annotationModeActive: false), false, AnnotationHotkeyAction.None, "tab passthrough");
     AssertGesture(gesture.OnPlainTabDown(annotationModeActive: true), true, AnnotationHotkeyAction.TogglePause, "pause");
@@ -49,13 +57,38 @@ static object VerifyAnnotationHotkeyGesture()
     AssertGesture(gesture.OnPlainTabDown(annotationModeActive: true), true, AnnotationHotkeyAction.TogglePause, "resume");
     AssertGesture(gesture.OnPlainTabUp(), true, AnnotationHotkeyAction.None, "resume up");
 
+    AssertGesture(gesture.OnEscapeDown(target, 4_000), false, AnnotationHotkeyAction.None, "escape down");
+    AssertGesture(
+        gesture.OnEscapeLongPress(4_000 + AnnotationHotkeyGesture.LongPressMilliseconds),
+        false,
+        AnnotationHotkeyAction.CancelAnnotation,
+        "escape hold",
+        target);
+    AssertGesture(gesture.OnEscapeLongPress(5_200), false, AnnotationHotkeyAction.None, "escape hold repeat");
+    AssertGesture(gesture.OnEscapeUp(5_400), false, AnnotationHotkeyAction.None, "escape hold release");
+    AssertGesture(gesture.OnEscapeDown(target, 6_000), false, AnnotationHotkeyAction.None, "escape tap down");
+    AssertGesture(
+        gesture.OnEscapeLongPress(6_000 + AnnotationHotkeyGesture.LongPressMilliseconds - 1),
+        false,
+        AnnotationHotkeyAction.None,
+        "escape tap stays below threshold");
+    AssertGesture(
+        gesture.OnEscapeUp(6_120),
+        false,
+        AnnotationHotkeyAction.ExitAnnotation,
+        "escape tap release",
+        target);
+
     return new
     {
         Case = "annotation-hotkey-gesture",
         ShortPress = "toggle-mode",
         LongPressMilliseconds = AnnotationHotkeyGesture.LongPressMilliseconds,
-        LongPress = "hide-toolbar",
+        LongPress = "toggle-toolbar",
         Tab = "pause-resume",
+        EscapeHold = "cancel-annotation",
+        EscapeTap = "exit-annotation",
+        EscapeNeverSwallowed = true,
         Passed = true
     };
 }
@@ -92,6 +125,13 @@ static object VerifyAnnotationUiVisibility()
         throw new InvalidOperationException("explicit annotation should allow the toolbar again.");
     }
 
+    state.HideToolbar(target);
+    state.ShowToolbar(target);
+    if (state.IsToolbarHidden(target))
+    {
+        throw new InvalidOperationException("hiding then showing the toolbar must toggle back to visible.");
+    }
+
     return new
     {
         Case = "annotation-ui-visibility",
@@ -99,6 +139,7 @@ static object VerifyAnnotationUiVisibility()
         HiddenTargetsStillStartAnnotation = true,
         HiddenStateIsScopedToTarget = true,
         ExplicitAnnotationRestoresToolbar = true,
+        HideShowToggleRoundTrip = true,
         Passed = true
     };
 }
@@ -107,12 +148,19 @@ static void AssertGesture(
     AnnotationHotkeyGestureResult result,
     bool handled,
     AnnotationHotkeyAction action,
-    string label)
+    string label,
+    nint? expectedTarget = null)
 {
     if (result.Handled != handled || result.Action != action)
     {
         throw new InvalidOperationException(
             $"{label}: expected handled={handled}, action={action}; actual handled={result.Handled}, action={result.Action}.");
+    }
+
+    if (expectedTarget.HasValue && result.TargetHwnd != expectedTarget.Value)
+    {
+        throw new InvalidOperationException(
+            $"{label}: expected target={expectedTarget.Value}; actual target={result.TargetHwnd}.");
     }
 }
 

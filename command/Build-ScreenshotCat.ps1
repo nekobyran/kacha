@@ -3,7 +3,7 @@ param(
     [ValidateSet('Validate', 'BuildRelease', 'PackageRelease', 'Clean')]
     [string]$Action = 'Validate',
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.0.8'
+    [string]$Version = '1.0.9'
 )
 
 $ErrorActionPreference = 'Stop'

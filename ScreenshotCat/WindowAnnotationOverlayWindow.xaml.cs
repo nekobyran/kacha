@@ -489,27 +489,11 @@ public sealed partial class WindowAnnotationOverlayWindow : Window
         e.Handled = true;
     }
 
-    private void Root_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key != VirtualKey.Escape)
-        {
-            return;
-        }
-
-        RequestExitAnnotationMode();
-        e.Handled = true;
-    }
-
     private void NoteBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Enter)
         {
             SaveNote();
-            e.Handled = true;
-        }
-        else if (e.Key == VirtualKey.Escape)
-        {
-            RequestExitAnnotationMode();
             e.Handled = true;
         }
     }
